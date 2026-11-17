@@ -142,15 +142,35 @@ export async function toolReport() {
   return rows;
 }
 
-export function upgradeTool(row) {
-  if (row.kind === 'npm') {
-    return runNpm(['install', '-g', `${row.pkg}@latest`], { stdio: 'inherit', timeout: 600000 }).status ?? 1;
-  }
-  if (row.kind === 'pip') {
-    const py = which('python') || which('python3') || which('py');
+/** pip 系的解释器名有多个别名，按优先级取第一个能解析到。 */
+function pythonBin() {
+  return which('python') || which('python3') || which('py');
+}
+
+/**
+ * 各 kind 的升级方式。拆成表驱动而不是 if-链：原来是三分支嵌套，
+ * 加一种 kind 就要再嵌一层，而现在只需要加一行。
+ * @returns {number} 退出码
+ */
+const UPGRADERS = {
+  npm(row) {
+    const r = runNpm(['install', '-g', `${row.pkg}@latest`], { stdio: 'inherit', timeout: 600000 });
+    return r.status ?? 1;
+  },
+  pip(row) {
+    const py = pythonBin();
     if (!py) return 1;
-    return run(py, ['-m', 'pip', 'install', '-U', row.pkg], { stdio: 'inherit', timeout: 600000 }).status ?? 1;
-  }
-  console.log(`  ${row.name}: 二进制工具，请从 ${row.repo || '官方 release'} 手动升级到 ${row.latest || '最新版'}`);
-  return 0;
+    const r = run(py, ['-m', 'pip', 'install', '-U', row.pkg], { stdio: 'inherit', timeout: 600000 });
+    return r.status ?? 1;
+  },
+  binary(row) {
+    // 二进制工具没有统一的包管理器入口，只提示，不擅自下载覆盖用户的 PATH。
+    console.log(`  ${row.name}: 二进制工具，请从 ${row.repo || '官方 release'} 手动升级到 ${row.latest || '最新版'}`);
+    return 0;
+  },
+};
+
+export function upgradeTool(row) {
+  const upgrade = UPGRADERS[row.kind];
+  return upgrade ? upgrade(row) : 0;
 }

@@ -94,32 +94,60 @@ function agentHomeFor(skillRoot) {
 }
 
 /**
+ * 三级判活的证据之一：桌面/IDE 安装目录存在即说明 agent 还在用。
+ * @returns {string} 命中的绝对路径，未命中返回空串
+ */
+function appEvidence(agent) {
+  for (const relApp of APP_PROBES[agent] || []) {
+    const abs = path.join(HOME, relApp);
+    if (isDir(abs)) return abs;
+  }
+  return '';
+}
+
+/**
+ * 证据之二：CLI 能从合并后的 PATH 解析到。结果进缓存，因为 discoverSkillRoots
+ * 会对同一批 agent 反复调用，每次都 spawn 一次 where.exe 很慢。
+ * @returns {string} 可执行文件路径，未命中返回空串
+ */
+function cliEvidence(agent) {
+  const cli = CLI_PROBES[agent];
+  if (!cli) return '';
+  if (!cliCache.has(cli)) cliCache.set(cli, which(cli));
+  return cliCache.get(cli);
+}
+
+/**
+ * 证据之三：agent 配置目录近 N 天有写入。DSH 这类二进制不在 PATH 上的情况
+ * 只能靠它兜底。
+ * @returns {number} 距今天数；目录不可读时返回 Infinity
+ */
+function idleDays(skillRoot) {
+  let mtime = 0;
+  try {
+    mtime = fs.statSync(agentHomeFor(skillRoot)).mtimeMs;
+  } catch {
+    /* 目录不可读按残留处理 */
+  }
+  return mtime ? Math.floor((Date.now() - mtime) / 86400000) : Infinity;
+}
+
+/**
  * 目录存在 ≠ agent 还在用：卸载后配置目录与 skills/ 会长期残留。
- * 判活按「桌面安装目录 > CLI 可解析 > 配置目录近 N 天有写入」三级证据。
+ * 判活按「桌面安装目录 > CLI 可解析 > 配置目录近 N 天有写入」三级证据依次
+ * 短路，三级都不成立才判为残留。
  */
 export function probeLiveness(entry, liveDays = 30) {
   const rel = path.relative(HOME, entry.dir).split(path.sep).join('/');
   if (SHARED_ROOTS.has(rel)) return { live: true, reason: 'shared skill store' };
 
-  for (const relApp of APP_PROBES[entry.agent] || []) {
-    const abs = path.join(HOME, relApp);
-    if (isDir(abs)) return { live: true, reason: `app: ${abs}` };
-  }
+  const app = appEvidence(entry.agent);
+  if (app) return { live: true, reason: `app: ${app}` };
 
-  const cli = CLI_PROBES[entry.agent];
-  if (cli) {
-    if (!cliCache.has(cli)) cliCache.set(cli, which(cli));
-    const hit = cliCache.get(cli);
-    if (hit) return { live: true, reason: `cli: ${hit}` };
-  }
+  const cli = cliEvidence(entry.agent);
+  if (cli) return { live: true, reason: `cli: ${cli}` };
 
-  let mtime = 0;
-  try {
-    mtime = fs.statSync(agentHomeFor(entry.dir)).mtimeMs;
-  } catch {
-    /* 目录不可读按残留处理 */
-  }
-  const days = mtime ? Math.floor((Date.now() - mtime) / 86400000) : Infinity;
+  const days = idleDays(entry.dir);
   if (days <= liveDays) return { live: true, reason: `active ${days}d ago` };
   return { live: false, reason: `no app/cli, idle ${Number.isFinite(days) ? `${days}d` : 'unknown'}` };
 }

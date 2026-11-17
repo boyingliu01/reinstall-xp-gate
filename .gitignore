@@ -6,3 +6,7 @@ reinstall-runs/
 # xp-gate run artefacts (report/history are regenerated on every commit)
 .xp-gate/
 .quality-history.jsonl
+
+# test runner output
+coverage/
+*.tap

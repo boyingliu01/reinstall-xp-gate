@@ -16,8 +16,9 @@ import {
 import { toolReport, upgradeTool } from './lib/tools.mjs';
 import { defaultSource, syncSelf } from './lib/selfsync.mjs';
 import {
-  copyTree, hashTree, isDir, isFile, listFiles, rmrf,
-} from './lib/util.mjs';
+  backupThenRemove, hasXpGateMarker, scanSkillResidue, pruneDeadRoots,
+} from './lib/residue.mjs';
+import { hashTree, isDir, isFile, rmrf } from './lib/util.mjs';
 import { section, item, table, note } from './lib/report.mjs';
 
 const skillRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -42,79 +43,6 @@ function tail(result, max = 400) {
 function abort(why) {
   console.error(`\n${tag} 中止：${why}`);
   process.exit(1);
-}
-
-function backupThenRemove(abs, runDir, label, isFileEntry = false) {
-  const dest = path.join(runDir, 'residue', label);
-  if (isFileEntry) {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(abs, dest);
-  } else {
-    copyTree(abs, dest);
-  }
-  rmrf(abs);
-}
-
-/** 目录内任意文件含 xp-gate 标记才算我们的产物。 */
-function hasXpGateMarker(dir) {
-  for (const rel of listFiles(dir).slice(0, 300)) {
-    try {
-      if (/xp-gate/i.test(fs.readFileSync(path.join(dir, rel), 'utf8'))) return true;
-    } catch {
-      /* 二进制/无权限文件跳过 */
-    }
-  }
-  return false;
-}
-
-function scanSkillResidue(roots, oldHashes) {
-  const identical = [];
-  const modified = [];
-  for (const root of roots) {
-    let entries = [];
-    try {
-      entries = fs.readdirSync(root.dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const dest = path.join(root.dir, entry.name);
-      const oldHash = oldHashes.get(entry.name);
-      if (!oldHash) continue;
-      if (hashTree(dest) === oldHash) {
-        identical.push({ agent: root.agent, dir: dest, name: entry.name });
-      } else {
-        modified.push({ agent: root.agent, dir: dest, name: entry.name });
-      }
-    }
-  }
-  return { identical, modified };
-}
-
-/**
- * install-skill 只看目录是否存在，会把 skill 写进已卸载 agent 的残留目录。
- * 这里把与发布包逐字节一致的副本删掉；用户改过的副本保持原样。
- */
-function pruneDeadRoots(pkg, deadRoots) {
-  const names = bundledSkills(pkg);
-  const hashes = new Map(names.map((n) => [n, hashTree(path.join(pkg, 'skills', n))]));
-  let removed = 0;
-  for (const root of deadRoots) {
-    for (const name of names) {
-      const dest = path.join(root.dir, name);
-      if (isDir(dest) && hashTree(dest) === hashes.get(name)) {
-        rmrf(dest);
-        removed += 1;
-      }
-    }
-    const selfCopy = path.join(root.dir, 'xp-gate-reinstall');
-    if (isFile(path.join(selfCopy, 'SKILL.md'))) {
-      rmrf(selfCopy);
-      removed += 1;
-    }
-  }
-  return removed;
 }
 
 function scanProjectHooks() {

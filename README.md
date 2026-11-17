@@ -51,6 +51,21 @@ node scripts/verify.mjs                # 验收，FAIL 时退出码 1
 产物目录：`~/.local/share/xp-gate/reinstall-runs/<时间戳>/`（配置快照、`baseline.json`、卸载前备份的 `residue/`）。
 该目录在 xp-gate 管理面之外，purge 不会删。
 
+## 测试
+
+```bash
+node --test "tests/*.test.mjs"     # 或 npm test
+```
+
+零依赖：用 Node 内置 `node:test`，不装任何包。84 个用例覆盖：
+
+- **破坏性路径优先**——`lib/residue.mjs` 里「备份后才删」的四个函数（备份成功、只删逐字节一致的副本、
+  含 xp-gate 标记才动、路径穿越防护）。
+- **判等逻辑**——`hashTree` 顺序无关、`sameTree` 内容比较、`copyTree` 覆盖残留。
+- **版本比较**——`cmpVersion` 必须按数值比较（`1.10 > 1.9`，字符串比较会判反）。
+- **不触碰真实用户目录**——所有写操作走 `mkdtemp` 临时目录，`discoverSkillRoots()` 不做断言
+  （它扫真实 HOME，断言会把本机 layout 固化进测试）。
+
 ## 安装到 agent
 
 SKILL.md 使用的约定是 `<root>/<name>/SKILL.md`。把本仓库放到对应根下即可：

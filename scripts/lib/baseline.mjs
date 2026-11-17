@@ -29,12 +29,50 @@ export function snapshotConfig(runDir) {
   return copied;
 }
 
+/** xp-gate 包与版本；未安装时两者都为空。 */
+export function xpGateInfo(pkg = packageDir()) {
+  return {
+    packageDir: pkg,
+    version: pkg ? readJson(path.join(pkg, 'package.json'))?.version || '' : '',
+  };
+}
+
+/** 用户配置面：mode/templateDir 来自 xp-gate.json，hooksPath 来自 git 全局配置。 */
+export function configInfo(appConfig) {
+  return {
+    mode: appConfig?.mode || '',
+    templateDir: appConfig?.templateDir || '',
+    hooksPath: gitConfig('core.hooksPath'),
+  };
+}
+
+/**
+ * Delphi 外部三席配置。三者都用 `?? null` 而非 `|| null`：空数组是合法值，
+ * 用 `||` 会把它误判成“未配置”。
+ */
+export function delphiInfo(delphi) {
+  return {
+    channels: delphi?.channels ?? null,
+    pinned_models: delphi?.pinned_models ?? null,
+    active_profile: delphi?.active_profile ?? null,
+  };
+}
+
+/** doctor 结果：能解析出 JSON 就投影关键字段，否则记下 stderr 便于排障。 */
+export function doctorInfo(doctor) {
+  if (!doctor.json) return { error: String(doctor.stderr || '').slice(0, 500) };
+  return { ok: doctor.json.ok, issues: doctor.json.issues, checks: doctor.json.checks };
+}
+
+/**
+ * 卸载前的只读基线。每一步都必须在 purge 之前拿到，因为 purge 之后版本、
+ * 配置、hooksPath 都会消失，没有基线就无法判断重装是否真的成功。
+ */
 export function collectBaseline() {
   const pkg = packageDir();
   const appConfig = readJson(path.join(HOME, '.config', 'xp-gate', 'xp-gate.json'));
   const delphi = readJson(path.join(HOME, '.config', 'xp-gate', '.delphi-config.json'));
   const doctor = xpJson(['doctor', '--json']);
-  const roots = discoverSkillRoots();
 
   return {
     createdAt: new Date().toISOString(),
@@ -43,24 +81,11 @@ export function collectBaseline() {
     node: process.version,
     nodePath: process.execPath,
     npm: String(runNpm(['-v'], { timeout: 20000 }).stdout || '').trim(),
-    xpGate: {
-      packageDir: pkg,
-      version: pkg ? readJson(path.join(pkg, 'package.json'))?.version || '' : '',
-    },
-    config: {
-      mode: appConfig?.mode || '',
-      templateDir: appConfig?.templateDir || '',
-      hooksPath: gitConfig('core.hooksPath'),
-    },
-    delphi: {
-      channels: delphi?.channels ?? null,
-      pinned_models: delphi?.pinned_models ?? null,
-      active_profile: delphi?.active_profile ?? null,
-    },
-    doctor: doctor.json
-      ? { ok: doctor.json.ok, issues: doctor.json.issues, checks: doctor.json.checks }
-      : { error: String(doctor.stderr || '').slice(0, 500) },
-    agents: roots,
+    xpGate: xpGateInfo(pkg),
+    config: configInfo(appConfig),
+    delphi: delphiInfo(delphi),
+    doctor: doctorInfo(doctor),
+    agents: discoverSkillRoots(),
     bundledSkills: bundledSkills(pkg),
     nativeAgents: nativeDelphiAgents(),
   };

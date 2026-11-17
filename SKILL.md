@@ -45,6 +45,51 @@ description: >
 | `update-skill --all` | 只更新「已部署过」的 skill，补不了缺失项 | 缺失/漂移项逐个 `install-skill <name> --force` |
 | 非官方 agent | CLI 只认 qoder/claude/opencode/dsh | Trae/WorkBuddy/CodeBuddy/Codex/Cline/DWS/Pi 等直接按目录复制 |
 | PATH 陈旧 | 工具已安装但当前进程 PATH 看不到，doctor 报 Not found | 脚本从注册表合并 PATH 后再探测；必要时 `xp-gate doctor --refresh-env` |
+| DSH 擦除凭据环境变量 | 名字含 `KEY`/`PASSWORD`/`SECRET`/`TOKEN` 的变量在 bash 工具里恒为空，`delphi-review` 报「引用了未导出的环境变量」 | 见下方「凭据环境变量在 DSH 里读不到」——不是配置错误，不要去改注册表或 `.bashrc` |
+
+### 凭据环境变量在 DSH 里读不到
+
+2026-11-17 查明的**误诊陷阱**，值得单独写：因为它看起来像配置错误，实际是安全设计，方向错了会白折腾很久。
+
+**现象**：`delphi-external-review` 报
+`provider "whalecloud" 的 api_key 引用了未导出的环境变量：WHALECLOUD_API_KEY`，
+而注册表里这个变量有值、`[Environment]::GetEnvironmentVariable(...,'User')` 也读得到。
+
+**真因**：`@deepseek-ai/dsh-subprocess/lib/index.js` 里
+
+```js
+const SENSITIVE_ENV_PATTERN = /KEY|PASSWORD|SECRET|TOKEN/i;
+```
+
+DSH 在 spawn 子进程时**主动擦除**所有「凭据形状」的环境变量，防止它们隐式泄漏进子进程。
+这是有意设计，不是 bug。判别方法很直接——同一个注册表键下：
+
+| 变量 | 含敏感词 | 能否在 bash 工具里读到 |
+|---|---|---|
+| `JAVA_HOME`、`NODE_COMPILE_CACHE`、`UV_HTTP_TIMEOUT` | 否 | 能 |
+| `WHALECLOUD_API_KEY`、`XIAOMI_API_KEY`、`WEREAD_API_KEY` | 是 | **不能（整个键不存在）** |
+
+**已经排除、不要重试的方向**（都实测过）：
+
+- 改 `.bashrc` / `.bash_profile` —— 工具调用是非交互 shell，**根本不读**；实测追加标记后当前会话和新起的 `bash -c` 都读不到
+- 设 `BASH_ENV` —— 机制本身有效（非交互 bash 确实会读它），但它自己也得先存在于 DSH 进程环境，同样被擦掉
+- 重启 DSH —— **试过，无效**。这个方向最容易误判成「进程启动早于设变量」，但重启后照样读不到
+- 强制广播 `WM_SETTINGCHANGE` —— 广播返回成功，子进程仍读不到
+
+**能用的补偿**：该模块注释自己写了正规出口——「显式提供的 env 层在擦除之后合并」，
+所以在 spawn 时自己带 `env` 就能穿过。本机已按此修好 `delphi-review`：
+
+```
+~/.local/share/xp-gate/bin/delphi-review.mjs   # hydrateCredentials()：入口处从 Windows 用户级注册表补回缺失凭据
+~/.local/bin/delphi-review                     # shim，顺带修了 /c/... 直接传给 node 的 MSYS 路径 bug（pwd -W）
+```
+
+要点：**注入必须放在程序入口**。`delphi-review` 有配置校验、席位解析、子进程 spawn 三处都读
+`process.env`，只在 spawn 处补会漏——这是第一版修法失败的原因。
+
+换了机器或重装后要复验：清掉环境变量跑 `delphi-review --subject <文件>`，
+三席能返回真实 `model_used` 即正常。注意参数是 `--subject` 不是 `--input-file`。
+
 
 ## 运行方式
 
