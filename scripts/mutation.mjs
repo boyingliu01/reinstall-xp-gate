@@ -27,6 +27,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { parseFailCount } from './lib/testreport.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const verbose = argv.includes('--verbose');
@@ -112,11 +114,11 @@ function runSuite() {
     maxBuffer: 64 * 1024 * 1024,
   });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
-  const failMatch = out.match(/\u2139 fail (\d+)/);
-  // -1 signals "could not read a count". Treating that as 0 would report a
-  // crashed runner as a surviving mutation; treating it as >0 would report
-  // every mutation as killed. Neither is true, so it is a distinct outcome.
-  return { failed: failMatch ? Number(failMatch[1]) : -1, out, status: r.status };
+  // -1 signals "could not read a count" (see lib/testreport.mjs). Treating that
+  // as 0 would report a crashed runner as a surviving mutation; treating it as
+  // >0 would report every mutation as killed. Neither is true, so the caller
+  // records a distinct ERROR outcome.
+  return { failed: parseFailCount(out), out, status: r.status };
 }
 
 const results = [];

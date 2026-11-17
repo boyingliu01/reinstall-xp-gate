@@ -57,6 +57,12 @@ versioning is [Semantic Versioning](https://semver.org/).
   reported as SURVIVED because the suite never ran. Added a distinct `ERROR`
   outcome for "the runner failed", so a broken invocation is no longer
   indistinguishable from a missing test.
+- The mutation runner could not read CI's test output. Node picks its reporter
+  by whether stdout is a TTY, so a terminal prints `ℹ fail 0` and a piped run
+  prints TAP `# fail 0`; the runner matched only the first, so every CI run
+  reported "the runner failed" while the counts were right there under a
+  different name. The parse now lives in `lib/testreport.mjs` with tests for both
+  formats, instead of being a regex buried in the runner.
 - `node --test "tests/*.test.mjs"` (quoted) only works on Windows: Node's test
   runner expands the glob there but not on Linux, where it fails with
   `Could not find '.../tests/*.test.mjs'`. Verified only on Windows before
