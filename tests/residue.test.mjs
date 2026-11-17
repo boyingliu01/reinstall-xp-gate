@@ -1,29 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import {
   backupThenRemove, hasXpGateMarker, scanSkillResidue, pruneDeadRoots,
   contentHashes, MARKER_SCAN_LIMIT,
 } from '../scripts/lib/residue.mjs';
-import { hashTree, rmrf, isFile } from '../scripts/lib/util.mjs';
+import { hashTree, isFile } from '../scripts/lib/util.mjs';
+import { tmpDir, fakePkg, deploySkill, editSkill } from './fixtures.mjs';
 
-function tmpDir(t, prefix = 'xgr-residue-') {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => rmrf(dir));
-  return dir;
-}
-
-function fakePkg(t, names) {
-  const pkg = tmpDir(t, 'xgr-pkg-');
-  for (const name of names) {
-    fs.mkdirSync(path.join(pkg, 'skills', name), { recursive: true });
-    fs.writeFileSync(path.join(pkg, 'skills', name, 'SKILL.md'), '# ' + name + '\n');
-  }
-  return pkg;
-}
+/** Stand-in for a user-edited SKILL.md; must differ from the bundled one. */
+const USER_EDIT = '# edited by the user\n';
 
 // --- backupThenRemove: every call in reinstall deletes user data ------------
 
@@ -111,7 +99,7 @@ test('hasXpGateMarker caps how many files it inspects', (t) => {
   // Marker sits beyond the cap; the bounded scan must return false rather than
   // walking an unbounded tree.
   for (let i = 0; i < MARKER_SCAN_LIMIT + 5; i += 1) {
-    fs.writeFileSync(path.join(dir, 'f' + String(i).padStart(3, '0') + '.txt'), 'plain');
+    fs.writeFileSync(path.join(dir, `f${String(i).padStart(3, '0')}.txt`), 'plain');
   }
   fs.writeFileSync(path.join(dir, 'zzz-last.txt'), 'xp-gate');
 
@@ -125,9 +113,8 @@ test('scanSkillResidue separates byte-identical copies from user-modified ones',
   const root = tmpDir(t);
   const srcHash = hashTree(path.join(pkg, 'skills', 'alpha'));
 
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'alpha'), { recursive: true });
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'beta'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'beta', 'SKILL.md'), '# edited\n');
+  deploySkill(pkg, root, 'alpha');
+  editSkill(deploySkill(pkg, root, 'alpha', 'beta'), '# edited\n');
 
   const oldHashes = new Map([['alpha', srcHash], ['beta', srcHash]]);
   const { identical, modified } = scanSkillResidue([{ agent: 'A', dir: root }], oldHashes);
@@ -153,20 +140,29 @@ test('scanSkillResidue skips unreadable roots', () => {
 
 // --- pruneDeadRoots: deletes only exact matches ----------------------------
 
-test('pruneDeadRoots removes only copies identical to the published package', (t) => {
+test('pruneDeadRoots deletes byte-identical copies but spares edited ones', (t) => {
+  // Two dead agent roots each holding the SAME skill name: one untouched, one
+  // edited by the user. This is the exact case the hash comparison exists for.
+  // Naming the edited copy something else would make this pass for the wrong
+  // reason -- contentHashes() only iterates names present in the package, so a
+  // differently-named dir is skipped before any hash is ever computed.
   const pkg = fakePkg(t, ['alpha']);
-  const root = tmpDir(t);
+  const untouched = tmpDir(t);
+  const edited = tmpDir(t);
 
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'alpha'), { recursive: true });
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'beta'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'beta', 'SKILL.md'), '# user edit\n');
+  deploySkill(pkg, untouched, 'alpha');
+  editSkill(deploySkill(pkg, edited, 'alpha'), USER_EDIT);
 
-  const removed = pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
+  const removed = pruneDeadRoots(pkg, [
+    { agent: 'Untouched', dir: untouched },
+    { agent: 'Edited', dir: edited },
+  ]);
 
   assert.equal(removed, 1);
-  assert.equal(fs.existsSync(path.join(root, 'alpha')), false);
-  // A modified copy is user data -- it must survive.
-  assert.equal(fs.existsSync(path.join(root, 'beta')), true);
+  assert.equal(fs.existsSync(path.join(untouched, 'alpha')), false, 'identical copy must go');
+  // Dropping the hash check deletes this too -- silent data loss.
+  assert.equal(fs.existsSync(path.join(edited, 'alpha')), true, 'edited copy is user data');
+  assert.equal(fs.readFileSync(path.join(edited, 'alpha', 'SKILL.md'), 'utf8'), USER_EDIT);
 });
 
 test('pruneDeadRoots also removes a stray xp-gate-reinstall copy', (t) => {

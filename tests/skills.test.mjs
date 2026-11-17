@@ -1,27 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { bundledSkills, planSkillCopies, summarizeRows, applySkillCopies } from '../scripts/lib/skills.mjs';
-import { rmrf } from '../scripts/lib/util.mjs';
-
-function tmpDir(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xgr-skills-'));
-  t.after(() => rmrf(dir));
-  return dir;
-}
-
-/** Build a fake xp-gate package dir with <name>/SKILL.md bundles. */
-function fakePkg(t, names) {
-  const pkg = tmpDir(t);
-  for (const name of names) {
-    fs.mkdirSync(path.join(pkg, 'skills', name), { recursive: true });
-    fs.writeFileSync(path.join(pkg, 'skills', name, 'SKILL.md'), '# ' + name + '\n');
-  }
-  return pkg;
-}
+import { tmpDir, fakePkg, deploySkill, editSkill } from './fixtures.mjs';
 
 test('bundledSkills lists only directories that actually contain SKILL.md', (t) => {
   const pkg = fakePkg(t, ['alpha', 'beta']);
@@ -44,9 +27,8 @@ test('planSkillCopies classifies each agent root as ok / drift / missing', (t) =
   const driftRoot = tmpDir(t);
   const emptyRoot = tmpDir(t);
 
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(okRoot, 'alpha'), { recursive: true });
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(driftRoot, 'alpha'), { recursive: true });
-  fs.writeFileSync(path.join(driftRoot, 'alpha', 'SKILL.md'), '# edited by user\n');
+  deploySkill(pkg, okRoot, 'alpha');
+  editSkill(deploySkill(pkg, driftRoot, 'alpha'), '# edited by user\n');
 
   const { names, rows } = planSkillCopies(pkg, [
     { agent: 'OK', dir: okRoot },
@@ -101,10 +83,8 @@ test('applySkillCopies backs up a drifted copy before overwriting it', (t) => {
   const pkg = fakePkg(t, ['alpha']);
   const root = tmpDir(t);
   const backupRoot = tmpDir(t);
-
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'alpha'), { recursive: true });
   const userEdit = '# local changes I do not want to lose\n';
-  fs.writeFileSync(path.join(root, 'alpha', 'SKILL.md'), userEdit);
+  editSkill(deploySkill(pkg, root, 'alpha'), userEdit);
 
   const { rows } = planSkillCopies(pkg, [{ agent: 'My Agent', dir: root }]);
   const touched = applySkillCopies(rows, { backupRoot });
@@ -121,9 +101,7 @@ test('applySkillCopies sanitises agent names used as backup path segments', (t) 
   const pkg = fakePkg(t, ['alpha']);
   const root = tmpDir(t);
   const backupRoot = tmpDir(t);
-
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'alpha'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'alpha', 'SKILL.md'), 'edited');
+  editSkill(deploySkill(pkg, root, 'alpha'), 'edited');
 
   // A slash or dot-dot in an agent label must not escape the backup root.
   const { rows } = planSkillCopies(pkg, [{ agent: '../../evil name!', dir: root }]);
@@ -139,7 +117,7 @@ test('applySkillCopies sanitises agent names used as backup path segments', (t) 
 test('applySkillCopies leaves "ok" rows alone', (t) => {
   const pkg = fakePkg(t, ['alpha']);
   const root = tmpDir(t);
-  fs.cpSync(path.join(pkg, 'skills', 'alpha'), path.join(root, 'alpha'), { recursive: true });
+  deploySkill(pkg, root, 'alpha');
 
   const { rows } = planSkillCopies(pkg, [{ agent: 'A', dir: root }]);
   const touched = applySkillCopies(rows, { backupRoot: tmpDir(t) });

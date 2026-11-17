@@ -1,21 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import {
   isFile, isDir, listFiles, hashTree, sameTree, rmrf, copyTree,
   readJson, writeJson, stamp, stripNul,
 } from '../scripts/lib/util.mjs';
+import { tmpDir } from './fixtures.mjs';
 
 const BACKSLASH = String.fromCharCode(92);
-
-function tmpDir(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xgr-util-'));
-  t.after(() => rmrf(dir));
-  return dir;
-}
 
 test('isFile / isDir return false for a nonexistent path instead of throwing', () => {
   // Both are guards used everywhere; throwing would turn a missing agent
