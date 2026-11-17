@@ -137,10 +137,32 @@ Windows 下若 `node` 不在 PATH，用 `"/c/Program Files/nodejs/node.exe"` 加
 | 3 工具 | 解析真实 PATH，比对 jscpd/lizard/checkov/hadolint/gitleaks/semgrep/npx/jq | 全部存在；npm/pip 系可达最新；二进制无法判定时标 UNVERIFIED |
 | 4 skill | 发布包 `skills/*` 为唯一事实源，逐个 agent 比对 | 每个 agent 根下集合 = 发布包集合，内容哈希一致 |
 | 5 插件 | Qoder 钩子、OpenCode 包、DSH profile 包、Claude 插件（如启用） | 版本 = CLI 版本；Qoder 原生 `delphi-*.md` 数量为 0 |
-| 6 行为 | `doctor`、`doctor delphi`、临时 repo 真实提交、`delphi-review` 冒烟 | 无 FAIL；SKIP 有解释；pre-commit 真被触发 |
+| 6 行为 | `doctor`、`doctor delphi`、**灰盒注入测试**、`delphi-review` 冒烟 | 无 FAIL；SKIP 有解释；门禁真拦住注入的缺陷 |
 
-`verify.mjs` 覆盖 0–5 与 6 的静态部分；**真实提交**和 **delphi 冒烟**必须人工做一次，
+`verify.mjs` 覆盖 0–5 与 6 的静态部分。**真实提交**和 **delphi 冒烟**必须人工做一次，
 因为它们会产生副作用（提交、外部模型调用），脚本不代劳。
+
+### 「装齐」和「有效」是两件事
+
+`verify.mjs` 的每个判据都是读文件、比哈希——它一次 `spawnSync` 都没有。所以它能在门禁
+已经悄悄失效的机器上报告「12 个 skill × 5 个 agent 全部一致」。这不是假设：
+上游 `xp-gate#732` 让 Gate 3/4 对 `.mjs` 报 PASS/SKIP 却一个文件都没检查。
+
+`audit.mjs` 补的是这一层：**建临时 git 仓库、种一个门禁该拦的缺陷、要求门禁自己说出来**，
+并且同一条门禁在干净树上必须不拦（对照组）。只有对照组与实验组分开，才能证明这个「拦住」有意义。
+
+```bash
+node scripts/audit.mjs          # 磁盘一致性 + 灰盒拦截，两层分开报告
+node scripts/audit.mjs --gates  # 只跑灰盒
+```
+
+判定里 `detected` 与 `blocked` 分开：Gate 8 遇密钥退出 1，Gate 2 报 `Found N clones`
+但退出 0（实测有无克隆都是 0）。并成一个判定，不是冤枉 Gate 2 就是高估它。
+
+改这个 skill 的代码后跑 `node scripts/mutation.mjs`：往生产代码注入 8 个已知缺陷，
+全部必须被测试抓到。全绿只证明「测试和代码看法一致」，不证明「代码错了测试会知道」——
+第一版 `pruneDeadRoots` 的测试就是这么假通过的。`error` 单独作为一种结果，避免
+「测试跑不起来」被误报成「变异存活」。
 
 ## 多 agent 矩阵
 

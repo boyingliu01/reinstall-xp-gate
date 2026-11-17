@@ -1,0 +1,72 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A green suite proves the tests agree with the code on the day it was
+    # written. The gate audit below depends on the *installed* xp-gate release,
+    # which changes without this repo changing -- hence the weekly run.
+    - cron: '0 3 * * 1'
+
+# Least privilege: this workflow only reads the repo and runs local commands.
+# Without an explicit block GitHub defaults to write-all, which is CKV2_GHA_1.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # No `npm install`: the suite uses the built-in node:test runner and has
+      # no dependencies. An empty install step would only add a failure mode.
+      - run: node --test "tests/*.test.mjs"
+
+  mutation:
+    name: mutation gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Fails if any injected defect survives the suite, i.e. if a property this
+      # skill exists to guarantee has stopped being tested. See scripts/mutation.mjs.
+      - run: node scripts/mutation.mjs
+
+  gate-audit:
+    name: gates actually block
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install xp-gate
+        run: npm install -g @boyingliu01/xp-gate
+      - name: Install gate tools
+        run: |
+          pip install semgrep lizard
+          npm install -g jscpd
+      # Gray-box: plant a defect the gate is responsible for catching and require
+      # the gate to say so. A gate that passes a dirty tree is broken, and no
+      # amount of hash comparison in verify.mjs would reveal it.
+      #
+      # Skipped on push/PR because it installs a toolchain and runs the real CLI;
+      # the point is to catch an upstream regression after it ships, not to gate
+      # this repo's own commits.
+      - run: node scripts/audit.mjs --gates

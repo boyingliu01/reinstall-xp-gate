@@ -4,6 +4,68 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-17
+
+### Added
+
+- **`scripts/audit.mjs` — ask "are the gates still effective" without
+  reinstalling.** `reinstall.mjs` used to be the only entry point, so the only
+  way to check whether the gates still block was to tear down and rebuild the
+  installation. Those are different questions. Two layers, reported separately:
+  on-disk parity, and whether the gates actually reject a planted defect.
+
+- **`scripts/lib/gatecheck.mjs` — gray-box gate verification.** Builds a
+  throwaway git repo, plants a defect the gate is responsible for catching, and
+  requires the gate to say so. Every case runs twice: the same gate on the same
+  tree without the defect. Recall alone is not a verdict — a gate that blocks
+  everything would otherwise score as perfect.
+
+  Measured on 0.38.9:
+
+  | Gate | clean | planted | verdict |
+  |---|---|---|---|
+  | 8 — secret scan | passed | blocked | ok |
+  | 3 — complexity | skipped | blocked | ok |
+  | 2 — duplicates | passed | detected | ok |
+
+  `detected` is a separate verdict from `blocked` because the gates disagree
+  about severity: Gate 8 exits 1 on a secret, while Gate 2 reports
+  `Found N clones` and exits 0 with or without clones.
+
+- **`scripts/mutation.mjs` — `npm run mutation`.** Eight injected defects that
+  must all be caught, each tied to a property this skill exists to guarantee
+  (wrong directory deleted, user's edit overwritten, outdated tool reported
+  current). Turns the one-off mutation pass from 1.1.1 into a repeatable gate.
+  Currently 8/8 killed.
+
+- **CI** (`.github/workflows/test.yml`): tests on Node 18/20/22, the mutation
+  gate on every push, and the gray-box gate audit weekly — the last one because
+  it depends on the *installed* xp-gate release, which changes without this
+  repository changing.
+
+### Fixed
+
+- `verdictOf` read `./failed-tests.js` as `blocked`: `FAILED` was matched as a
+  substring, so a filename containing "failed" turned a clean gate run into a
+  failure. Now matched as a standalone token. A false alarm is how an audit
+  stops being read at all.
+- `verdictOf` returned `unknown` for a clean Gate 2 run, because Gate 2 prints
+  no is okay-marker at all. "Cannot read the output" and "the gate is fine" must
+  not look the same.
+- The mutation runner spawned the test suite through a shell, so
+  `C:\Program Files\nodejs\node.exe` was split at the space and every mutation
+  reported as SURVIVED because the suite never ran. Added a distinct `ERROR`
+  outcome for "the runner failed", so a broken invocation is no longer
+  indistinguishable from a missing test.
+
+### Upstream
+
+- Filed [xp-gate#840](https://github.com/boyingliu01/xp-gate/issues/840): on a
+  machine without OpenCode, `doctor` reports `✗ TUI registration: Not
+  registered` and exits 1, because the check never asks whether the platform
+  exists. Found by the new audit — it was the only FAIL on an otherwise clean
+  machine.
+
 ## [1.1.1] - 2026-11-17
 
 ### Fixed

@@ -51,20 +51,63 @@ node scripts/verify.mjs                # 验收，FAIL 时退出码 1
 产物目录：`~/.local/share/xp-gate/reinstall-runs/<时间戳>/`（配置快照、`baseline.json`、卸载前备份的 `residue/`）。
 该目录在 xp-gate 管理面之外，purge 不会删。
 
+## 审计：门禁到底还拦不拦
+
+```bash
+node scripts/audit.mjs            # 两层：磁盘一致性 + 门禁真实拦截
+node scripts/audit.mjs --gates    # 只跑灰盒拦截测试
+node scripts/audit.mjs --static   # 只查磁盘一致性（等同 verify --quick）
+```
+
+**为什么需要它**：`verify.mjs` 在 1.1.1 之前**一次 `spawnSync` 都没有**——每个判据都是读文件、比哈希。
+所以它能在门禁已经悄悄失效的机器上报告「12 个 skill × 5 个 agent 全部一致」。文件装齐和门禁有效是两件事，
+第二件读文件永远证明不了。
+
+灰盒层的做法是**建一个临时 git 仓库、种一个门禁该拦的缺陷、要求门禁自己说出来**，并且同一条门禁
+在干净树上必须不拦（对照组）。只有对照组和实验组分开，才能证明这个「拦住」有意义：
+
+```
+  Gate  Clean    Planted   Verdict
+  8     passed   blocked   ok
+  3     skipped  blocked   ok
+  2     passed   detected  ok
+```
+
+`detected` 与 `blocked` 分开是因为门禁严重程度不一致：Gate 8 遇密钥退出 1，Gate 2 报
+`Found N clones` 但退出 0（实测有无克隆都是 0）。把它们并成一个判定，不是冤枉 Gate 2 就是高估它。
+
+## 变异测试：测试真的会失败吗
+
+```bash
+node scripts/mutation.mjs           # 8 个变异，全部必须被抓
+node scripts/mutation.mjs --verbose # 显示是哪个测试抓到的
+```
+
+往生产代码里注入一个已知缺陷、跑测试、要求测试失败，然后还原。全绿只证明「测试和代码看法一致」，
+不证明「代码错了测试会知道」。
+
+这不是形式主义。第一版「pruneDeadRoots 只删逐字节一致的副本」这个测试**无论哈希比对存不存在都通过**，
+因为它把改过的副本命名成一个循环永远访问不到的名字。84/84 全绿，而删掉比对会误删用户改过的 skill——
+这个洞是靠变异测试才发现的。
+
 ## 测试
 
 ```bash
 node --test "tests/*.test.mjs"     # 或 npm test
 ```
 
-零依赖：用 Node 内置 `node:test`，不装任何包。84 个用例覆盖：
+零依赖：用 Node 内置 `node:test`，不装任何包。92 个用例覆盖：
 
 - **破坏性路径优先**——`lib/residue.mjs` 里「备份后才删」的四个函数（备份成功、只删逐字节一致的副本、
   含 xp-gate 标记才动、路径穿越防护）。
 - **判等逻辑**——`hashTree` 顺序无关、`sameTree` 内容比较、`copyTree` 覆盖残留。
 - **版本比较**——`cmpVersion` 必须按数值比较（`1.10 > 1.9`，字符串比较会判反）。
+- **门禁输出解析**——`verdictOf` 必须把干净树读成通过、把注入缺陷读成拦截，两者缺一不可。
 - **不触碰真实用户目录**——所有写操作走 `mkdtemp` 临时目录，`discoverSkillRoots()` 不做断言
   （它扫真实 HOME，断言会把本机 layout 固化进测试）。
+
+CI（`.github/workflows/test.yml`）在 Node 18/20/22 上跑测试与变异门禁；灰盒门禁审计每周跑一次，
+因为它依赖**已安装的** xp-gate 版本——那个东西会在本仓库不变的情况下自己变。
 
 ## 安装到 agent
 
