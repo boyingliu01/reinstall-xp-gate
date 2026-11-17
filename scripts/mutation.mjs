@@ -95,12 +95,18 @@ const MUTATIONS = [
 ];
 
 function runSuite() {
-  // No `shell: true` here. Under a shell, `process.execPath` is
-  // "C:\Program Files\nodejs\node.exe" and the space splits the command --
-  // every mutation then "survives" because the suite never actually ran. The
-  // glob is expanded by Node's own test runner, not by a shell, so passing it
-  // through unquoted is correct and works the same on Windows and POSIX.
-  const r = spawnSync(process.execPath, ['--test', 'tests/*.test.mjs'], {
+  // No `shell: true`: under a shell `process.execPath` is
+  // "C:\Program Files\nodejs\node.exe" and the space splits the command, so
+  // every mutation would report SURVIVED because the suite never ran.
+  //
+  // The files are enumerated here rather than passed as 'tests/*.test.mjs'.
+  // Node's test runner expands a glob on Windows but NOT on Linux -- CI caught
+  // this as "Could not find '.../tests/*.test.mjs'". Listing the files removes
+  // the dependency on who does the expanding.
+  const files = fs.readdirSync(path.join(root, 'tests'))
+    .filter((f) => f.endsWith('.test.mjs'))
+    .map((f) => path.join('tests', f));
+  const r = spawnSync(process.execPath, ['--test', ...files], {
     cwd: root,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

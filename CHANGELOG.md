@@ -57,6 +57,12 @@ versioning is [Semantic Versioning](https://semver.org/).
   reported as SURVIVED because the suite never ran. Added a distinct `ERROR`
   outcome for "the runner failed", so a broken invocation is no longer
   indistinguishable from a missing test.
+- `node --test "tests/*.test.mjs"` (quoted) only works on Windows: Node's test
+  runner expands the glob there but not on Linux, where it fails with
+  `Could not find '.../tests/*.test.mjs'`. Verified only on Windows before
+  pushing, which is exactly the gap. The glob is now unquoted so the shell
+  expands it, and `mutation.mjs` enumerates the files itself instead of relying
+  on anyone to expand anything.
 
 ### Upstream
 

@@ -93,7 +93,7 @@ node scripts/mutation.mjs --verbose # 显示是哪个测试抓到的
 ## 测试
 
 ```bash
-node --test "tests/*.test.mjs"     # 或 npm test
+node --test tests/*.test.mjs     # 或 npm test
 ```
 
 零依赖：用 Node 内置 `node:test`，不装任何包。92 个用例覆盖：

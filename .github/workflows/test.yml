@@ -30,7 +30,7 @@ jobs:
           node-version: ${{ matrix.node }}
       # No `npm install`: the suite uses the built-in node:test runner and has
       # no dependencies. An empty install step would only add a failure mode.
-      - run: node --test "tests/*.test.mjs"
+      - run: node --test tests/*.test.mjs
 
   mutation:
     name: mutation gate
