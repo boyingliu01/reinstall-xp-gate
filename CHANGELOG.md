@@ -4,6 +4,67 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-02-19
+
+The theme: **make the quality claims measurable.** Three separate checks in this
+repo reported "clean" while measuring nothing, and each was found only by
+re-deriving the number by hand.
+
+### Added
+
+- **`scripts/hp-gate.mjs` — complexity for the files xp-gate cannot see.**
+  xp-gate's `LIZARD_EXTENSIONS` and `SEMGREP_EXTENSIONS` (`gates/common.ts`)
+  both omit `mjs`/`cjs`, so a pure-ESM project passes Gate 3 with the message
+  "⏭️ SKIPPED – Complexity (no source files to check)" and no function measured
+  (xp-gate#732). Measured control: the same CCN-22 file is checked as `src/a.js`
+  and skipped as `src/a.mjs`. `hp-gate` runs lizard over `.mjs`/`.cjs` at the
+  same CCN 5 threshold Gate 3 uses, plus `node --check` per file (Gate 1 also
+  skips `.mjs`). Wired into CI and `npm run hp-gate`.
+
+- **`scripts/lib/ccn.mjs` — the CSV contract, testable.** `parseLizardCsv`,
+  `splitCsvLine`, `ccnViolations`, with `tests/ccn.test.mjs` pinning all three
+  numeric columns. Field order verified against lizard 1.26.1
+  `lizard_ext/csvoutput.py`: `nloc, cyclomatic_complexity, token_count, …`.
+
+- **`tests/gatecheck-audit.test.mjs`** — pins the audit's own bookkeeping: a
+  blocked control is `unmeasurable`, not a gate failure, and a known upstream
+  gap neither counts as a pass nor turns the audit permanently red.
+
+### Fixed
+
+- **`hp-gate` passed a tree containing a CCN-22 function, twice.** First because
+  lizard was run without `--csv` (empty stdout); then because the parser read
+  column 0 (NLOC) instead of column 1 (CCN), yielding zero rows. Both surfaced
+  as "every function within CCN 5". There is now a hard `scanBroken` failure
+  when a non-empty source set parses to zero rows, plus a mutation for each of
+  the three ways to misread the columns.
+
+- **`audit.mjs` reported a blocking control as a gate failure.** Gate 2's clean
+  tree prints `Gate 2 FAILED: spawnSync npx ENOENT` even with jscpd 5.4.3 on
+  PATH, because `lib/gate-runner.js` probes `<root>/node_modules/jscpd/bin/jscpd`
+  and jscpd 5.x moved its bin to `run-jscpd.js`; the three fallbacks fail on
+  Windows for three different reasons (`jscpd.cmd` EINVAL, `jscpd` ENOENT,
+  `npx` ENOENT) — all through `execFileSync` without a shell. Reported as
+  `UNMEASURABLE` now; the root cause is documented in `lib/gatecheck.mjs`.
+
+- **`cmpVersion` mutation was equivalent to the original** and could never be
+  killed, so it tested nothing while looking like coverage. Replaced with two
+  mutations that do change behaviour (first-component-only, string compare).
+
+- **Four `residue.mjs` mutation anchors went stale** during refactoring and were
+  silently reported as `SKIPPED`. Re-anchored, and the anchors now target the
+  named helpers (`classifyCopy`, `isIdenticalCopy`) so a future split is more
+  likely to fail loudly than to pass quietly.
+
+- **Every production function in this repo was above CCN 5.** 14 functions
+  exceeded the threshold the repo's own gates would enforce (had they looked);
+  the worst was `runCase` at 27. All 414 functions are now within CCN 5,
+  including the tests. The refactors split behaviour, they did not delete it —
+  the suite grew from 97 to 114 cases and mutation coverage from 8 to 16
+  mutations while the violation count went to zero.
+
+- **Version bump to 1.3.0** and `VERSION` now matches `package.json`.
+
 ## [1.2.0] - 2026-11-17
 
 ### Added

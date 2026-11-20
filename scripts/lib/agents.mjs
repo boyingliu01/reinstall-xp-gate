@@ -1,8 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOME, which } from './proc.mjs';
-import { isDir, isFile } from './util.mjs';
+import { isDir } from './util.mjs';
 
+/**
+ * Agent labels for every config directory this skill knows about.
+ *
+ * These are DIRECTORY names, so they are matched case-insensitively against a
+ * path relative to HOME. Adding an agent here is what makes it report as
+ * "Trae CN" instead of "trae cn".
+ */
 const KNOWN_LABELS = {
   '.agents': 'Generic agents',
   '.claude': 'Claude Code',
@@ -19,7 +26,7 @@ const KNOWN_LABELS = {
   '.trae-cn': 'Trae CN',
   '.trae-aicc': 'Trae AICC',
   '.workbuddy': 'WorkBuddy',
-  'doubaowork': 'Doubao Work',
+  doubaowork: 'Doubao Work',
 };
 
 /** xp-gate 的 installer 本身认识的平台；其余 agent 由本脚本直接复制。 */
@@ -60,12 +67,20 @@ const cliCache = new Map();
 const BACKUP_RE = /(^|[\\/])[^\\/]*(backup|bak|old|archive|snapshot|migration)[^\\/]*([\\/]|$)/i;
 const SKIP_RE = /(^|[\\/])(node_modules|\.git|\.pnpm|skills-marketplace|connectors)([\\/]|$)/i;
 
+/** Qoder's own Delphi agent files: `delphi-<seat>.md` in an `agents/` directory. */
+const DELPHI_AGENT_RE = /^delphi-.*\.md$/i;
+
 function safeReaddir(dir) {
   try {
     return fs.readdirSync(dir, { withFileTypes: true });
   } catch {
     return [];
   }
+}
+
+/** Path relative to HOME with forward slashes, which is what the tables use. */
+export function relToHome(abs) {
+  return path.relative(HOME, abs).split(path.sep).join('/');
 }
 
 /**
@@ -77,20 +92,19 @@ function looksLikeSkillRoot(dir) {
 }
 
 export function labelFor(skillRoot) {
-  const rel = path.relative(HOME, skillRoot).split(path.sep).join('/');
-  const base = rel.replace(/\/skills$/, '');
+  const base = relToHome(skillRoot).replace(/\/skills$/, '');
   return KNOWN_LABELS[base.toLowerCase()] || base.replace(/^\./, '').replace(/[/-]+/g, ' ');
 }
 
 export function isOfficialSkillRoot(skillRoot) {
-  const rel = path.relative(HOME, skillRoot).split(path.sep).join('/');
-  return OFFICIAL_ROOTS.has(rel);
+  return OFFICIAL_ROOTS.has(relToHome(skillRoot));
 }
 
-function agentHomeFor(skillRoot) {
+export function agentHomeFor(skillRoot) {
   const parts = path.relative(HOME, skillRoot).split(path.sep);
-  if (parts[0] === '.config' && parts.length > 2) return path.join(HOME, parts[0], parts[1]);
-  return path.join(HOME, parts[0]);
+  return parts[0] === '.config' && parts.length > 2
+    ? path.join(HOME, parts[0], parts[1])
+    : path.join(HOME, parts[0]);
 }
 
 /**
@@ -98,11 +112,8 @@ function agentHomeFor(skillRoot) {
  * @returns {string} 命中的绝对路径，未命中返回空串
  */
 function appEvidence(agent) {
-  for (const relApp of APP_PROBES[agent] || []) {
-    const abs = path.join(HOME, relApp);
-    if (isDir(abs)) return abs;
-  }
-  return '';
+  const relApp = (APP_PROBES[agent] || []).map((rel) => path.join(HOME, rel)).find(isDir);
+  return relApp || '';
 }
 
 /**
@@ -122,7 +133,7 @@ function cliEvidence(agent) {
  * 只能靠它兜底。
  * @returns {number} 距今天数；目录不可读时返回 Infinity
  */
-function idleDays(skillRoot) {
+export function idleDays(skillRoot) {
   let mtime = 0;
   try {
     mtime = fs.statSync(agentHomeFor(skillRoot)).mtimeMs;
@@ -132,24 +143,43 @@ function idleDays(skillRoot) {
   return mtime ? Math.floor((Date.now() - mtime) / 86400000) : Infinity;
 }
 
+/** Format an idle-day count for the report; Infinity is not a number a human can read. */
+function describeIdle(days) {
+  return Number.isFinite(days) ? `${days}d` : 'unknown';
+}
+
 /**
  * 目录存在 ≠ agent 还在用：卸载后配置目录与 skills/ 会长期残留。
  * 判活按「桌面安装目录 > CLI 可解析 > 配置目录近 N 天有写入」三级证据依次
  * 短路，三级都不成立才判为残留。
  */
 export function probeLiveness(entry, liveDays = 30) {
-  const rel = path.relative(HOME, entry.dir).split(path.sep).join('/');
-  if (SHARED_ROOTS.has(rel)) return { live: true, reason: 'shared skill store' };
+  const evidence = [
+    () => (SHARED_ROOTS.has(relToHome(entry.dir)) ? 'shared skill store' : ''),
+    () => wrap('app', appEvidence(entry.agent)),
+    () => wrap('cli', cliEvidence(entry.agent)),
+    () => recency(entry.dir, liveDays),
+  ];
+  for (const probe of evidence) {
+    const reason = probe();
+    if (reason) return { live: true, reason };
+  }
+  return { live: false, reason: `no app/cli, idle ${describeIdle(idleDays(entry.dir))}` };
+}
 
-  const app = appEvidence(entry.agent);
-  if (app) return { live: true, reason: `app: ${app}` };
+/** Prefix a non-empty evidence path, or return '' so the next probe runs. */
+function wrap(kind, value) {
+  return value ? `${kind}: ${value}` : '';
+}
 
-  const cli = cliEvidence(entry.agent);
-  if (cli) return { live: true, reason: `cli: ${cli}` };
+/** Third evidence tier: the config dir was written recently enough to count as live. */
+function recency(dir, liveDays) {
+  const days = idleDays(dir);
+  return days <= liveDays ? `active ${days}d ago` : '';
+}
 
-  const days = idleDays(entry.dir);
-  if (days <= liveDays) return { live: true, reason: `active ${days}d ago` };
-  return { live: false, reason: `no app/cli, idle ${Number.isFinite(days) ? `${days}d` : 'unknown'}` };
+function isDirEntry(entry) {
+  return entry.isDirectory() || entry.isSymbolicLink();
 }
 
 /**
@@ -161,54 +191,57 @@ export function probeLiveness(entry, liveDays = 30) {
  */
 export function discoverSkillRoots({ liveDays = 30 } = {}) {
   const found = new Map();
-  const add = (dir) => {
-    const abs = path.resolve(dir);
-    if (found.has(abs)) return;
-    if (BACKUP_RE.test(abs) || SKIP_RE.test(abs)) return;
-    if (!looksLikeSkillRoot(abs)) return;
-    const entry = { agent: labelFor(abs), dir: abs, official: isOfficialSkillRoot(abs) };
-    found.set(abs, { ...entry, ...probeLiveness(entry, liveDays) });
-  };
-
-  for (const entry of safeReaddir(HOME)) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const base = path.join(HOME, entry.name);
-    add(path.join(base, 'skills'));
-    add(path.join(base, 'agent', 'skills'));
+  for (const dir of candidateRoots()) {
+    const described = describeRoot(dir, liveDays);
+    if (described) found.set(described.abs, described.root);
   }
-
-  const configDir = path.join(HOME, '.config');
-  for (const entry of safeReaddir(configDir)) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    add(path.join(configDir, entry.name, 'skills'));
-  }
-
   return [...found.values()].sort((a, b) => a.agent.localeCompare(b.agent, 'en'));
+}
+
+/** Every `skills/` directory the three documented patterns can produce. */
+function candidateRoots() {
+  const bases = safeReaddir(HOME).filter(isDirEntry).map((e) => path.join(HOME, e.name));
+  const configDir = path.join(HOME, '.config');
+  const configs = safeReaddir(configDir).filter(isDirEntry).map((e) => path.join(configDir, e.name, 'skills'));
+  return [
+    ...bases.flatMap((base) => [path.join(base, 'skills'), path.join(base, 'agent', 'skills')]),
+    ...configs,
+  ];
+}
+
+/**
+ * Decide whether one candidate path is a skill root, and whether it is live.
+ * Returns null for paths the filters exclude (backups, marketplaces, non-dirs).
+ * @returns {{abs:string, root:object}|null}
+ */
+function describeRoot(dir, liveDays) {
+  const abs = path.resolve(dir);
+  if (BACKUP_RE.test(abs) || SKIP_RE.test(abs) || !looksLikeSkillRoot(abs)) return null;
+  const entry = { agent: labelFor(abs), dir: abs, official: isOfficialSkillRoot(abs) };
+  return { abs, root: { ...entry, ...probeLiveness(entry, liveDays) } };
 }
 
 /** Qoder 原生 Delphi agent（external-only 下应为 0）。 */
 export function nativeDelphiAgents() {
-  const out = [];
-  for (const agentsDir of [
-    path.join(HOME, '.qoder', 'agents'),
-    path.join(HOME, '.qoder-cn', 'agents'),
-  ]) {
-    for (const entry of safeReaddir(agentsDir)) {
-      if (entry.isFile() && /^delphi-.*\.md$/i.test(entry.name)) {
-        out.push(path.join(agentsDir, entry.name));
-      }
-    }
-  }
-  return out;
+  return delphiAgentDirs().flatMap((dir) => safeReaddir(dir)
+    .filter((e) => e.isFile() && DELPHI_AGENT_RE.test(e.name))
+    .map((e) => path.join(dir, e.name)));
+}
+
+/**
+ * The `delphi-*.md` files Qoder deploys itself. `install` writes these when the
+ * config asks for native Delphi seats; the external-only profile must have none.
+ */
+function delphiAgentDirs() {
+  return ['.qoder', '.qoder-cn'].map((base) => path.join(HOME, base, 'agents'));
 }
 
 /** 每个 agent 可能存在的本地 hooks 模板目录。 */
 export function hookTemplateDirs(roots) {
-  const dirs = new Set();
-  for (const root of roots) {
-    dirs.add(path.join(path.dirname(root.dir), 'git-hooks-template'));
-  }
-  dirs.add(path.join(HOME, '.qoder', 'git-hooks-template'));
-  dirs.add(path.join(HOME, '.config', 'opencode', 'git-hooks-template'));
+  const dirs = new Set([
+    ...roots.map((root) => path.join(path.dirname(root.dir), 'git-hooks-template')),
+    path.join(HOME, '.qoder', 'git-hooks-template'),
+    path.join(HOME, '.config', 'opencode', 'git-hooks-template'),
+  ]);
   return [...dirs].filter(isDir);
 }

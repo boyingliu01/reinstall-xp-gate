@@ -1,17 +1,38 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { HOME } from './proc.mjs';
 import { copyTree, isDir, isFile, sameTree, stamp } from './util.mjs';
 
+const SKILL_NAME = 'xp-gate-reinstall';
+
+/** The canonical copy installed by `install.mjs`, or this script's own tree. */
 export function defaultSource(selfDir) {
-  const canonical = path.join(HOME, '.local', 'share', 'xp-gate', 'skills', 'xp-gate-reinstall');
+  const canonical = path.join(HOME, '.local', 'share', 'xp-gate', 'skills', SKILL_NAME);
   if (isDir(canonical) && isFile(path.join(canonical, 'SKILL.md'))) return canonical;
   return selfDir;
 }
 
-function backupDirFor(agent) {
+export function backupDirFor(agent) {
   const label = String(agent).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'agent';
   return path.join(HOME, '.local', 'share', 'xp-gate', 'skills', '.backups', `${label}-${stamp()}`);
+}
+
+/** What would have to happen to bring one agent root up to date. */
+function stateFor(source, dest) {
+  if (!isDir(dest)) return 'new';
+  return sameTree(source, dest) ? 'ok' : 'update';
+}
+
+function syncOne(source, root, dryRun) {
+  const dest = path.join(root.dir, SKILL_NAME);
+  if (path.resolve(dest) === path.resolve(source)) {
+    return { agent: root.agent, dir: root.dir, dest, state: 'source' };
+  }
+  const state = stateFor(source, dest);
+  if (state !== 'ok' && !dryRun) {
+    if (state === 'update') copyTree(dest, backupDirFor(root.agent));
+    copyTree(source, dest);
+  }
+  return { agent: root.agent, dir: root.dir, dest, state };
 }
 
 /**
@@ -19,20 +40,5 @@ function backupDirFor(agent) {
  * 只覆盖内容不同的副本，并在覆盖前备份。
  */
 export function syncSelf({ source, roots, dryRun = false }) {
-  const results = [];
-  for (const root of roots) {
-    const dest = path.join(root.dir, 'xp-gate-reinstall');
-    if (path.resolve(dest) === path.resolve(source)) {
-      results.push({ agent: root.agent, dir: root.dir, dest, state: 'source' });
-      continue;
-    }
-    let state = 'new';
-    if (isDir(dest)) state = sameTree(source, dest) ? 'ok' : 'update';
-    if (state !== 'ok' && !dryRun) {
-      if (state === 'update') copyTree(dest, backupDirFor(root.agent));
-      copyTree(source, dest);
-    }
-    results.push({ agent: root.agent, dir: root.dir, dest, state });
-  }
-  return results;
+  return roots.map((root) => syncOne(source, root, dryRun));
 }

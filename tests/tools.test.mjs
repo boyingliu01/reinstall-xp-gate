@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { semverOf, cmpVersion, TOOLS } from '../scripts/lib/tools.mjs';
+import { semverOf, cmpVersion, TOOLS, classify, statusOf } from '../scripts/lib/tools.mjs';
 
 // semverOf + cmpVersion decide "is this tool outdated". A wrong answer either
 // silently skips an upgrade (gate tool stays old) or claims a bogus upgrade is
@@ -63,12 +63,48 @@ test('TOOLS declares every tool the verify step expects, with a usable spec', ()
     assert.ok(names.includes(required), `missing tool spec: ${required}`);
   }
   // Every entry needs a dispatcher, otherwise upgradeTool returns 0 and the
-  // report claims success while the tool is never upgraded.
-  const dispatchable = ['npm', 'pip', 'binary'];
+  // report claims success while the tool is never upgraded. The table says what
+  // each kind owes; a new kind that nobody wires up fails the first assertion.
+  const REQUIRED_FIELD = { npm: 'pkg', pip: 'pkg', binary: 'repo' };
+  const KINDS = ['npm', 'pip', 'binary', 'node'];
   for (const tool of TOOLS) {
-    assert.ok(['npm', 'pip', 'binary', 'node'].includes(tool.kind), `bad kind for ${tool.name}`);
-    if (tool.kind === 'npm' || tool.kind === 'pip') assert.ok(tool.pkg, `${tool.name} needs pkg`);
-    if (tool.kind === 'binary') assert.ok(tool.repo, `${tool.name} needs repo`);
-    if (tool.kind !== 'node') assert.ok(dispatchable.includes(tool.kind), `undispatchable: ${tool.name}`);
+    assert.ok(KINDS.includes(tool.kind), `bad kind for ${tool.name}`);
+    const field = REQUIRED_FIELD[tool.kind];
+    if (field) assert.ok(tool[field], `${tool.name} (${tool.kind}) needs ${field}`);
   }
+});
+
+test('classify reports a missing tool as missing, never as ok', () => {
+  return classify({ present: false, kind: 'npm', version: '', latest: '' }).then((row) => {
+    assert.equal(row.status, 'missing');
+  });
+});
+
+test('classify marks a tool outdated only when it is genuinely behind', async () => {
+  const behind = await classify({ present: true, kind: 'npm', version: '1.0.0', latest: '' }, async () => '2.0.0');
+  assert.equal(behind.status, 'outdated');
+  assert.equal(behind.latest, '2.0.0');
+
+  const current = await classify({ present: true, kind: 'npm', version: '2.0.0', latest: '' }, async () => '2.0.0');
+  assert.equal(current.status, 'ok');
+});
+
+test('classify separates "could not look up" from "up to date"', async () => {
+  // The distinction that matters: an empty `latest` means nothing was compared.
+  // Reporting that as 'ok' claims a tool is current on the strength of a failed
+  // network call, which is the silent-pass shape this project exists to avoid.
+  const unknown = await classify({ present: true, kind: 'npm', version: '1.0.0', latest: '' }, async () => '');
+  assert.equal(unknown.status, 'unverified');
+});
+
+test('classify treats node/npx as ok when present, since it has no peer version', async () => {
+  const row = await classify({ present: true, kind: 'node', version: '24.0.0', latest: '' }, async () => '');
+  assert.equal(row.status, 'ok');
+});
+
+test('statusOf blocks an upgrade claim on an unparseable version', () => {
+  // cmpVersion ranks '' below anything numeric, so a tool whose version could
+  // not be read counts as behind -- never as current.
+  assert.equal(statusOf({ kind: 'npm', version: '', latest: '2.0.0' }), 'outdated');
+  assert.equal(statusOf({ kind: 'npm', version: '2.0.0', latest: '' }), 'unverified');
 });

@@ -45,21 +45,23 @@ function abort(why) {
   process.exit(1);
 }
 
+/** Hooks xp-gate installs into a repo; only these are candidates for cleanup. */
+const PROJECT_HOOK_NAMES = ['pre-commit', 'pre-push', 'post-merge', 'post-checkout', 'prepare-commit-msg'];
+
+/** xp-gate hooks in THIS repo's .git/hooks (a bare xp-gate marker is the proof). */
 function scanProjectHooks() {
-  const gitDir = path.join(process.cwd(), '.git');
-  if (!isDir(gitDir)) return [];
-  const hooksDir = path.join(gitDir, 'hooks');
-  const hits = [];
-  for (const name of ['pre-commit', 'pre-push', 'post-merge', 'post-checkout', 'prepare-commit-msg']) {
-    const file = path.join(hooksDir, name);
-    if (!isFile(file)) continue;
-    try {
-      if (/xp-gate/i.test(fs.readFileSync(file, 'utf8'))) hits.push(file);
-    } catch {
-      /* ignore */
-    }
+  const hooksDir = path.join(process.cwd(), '.git', 'hooks');
+  if (!isDir(hooksDir)) return [];
+  return PROJECT_HOOK_NAMES.map((name) => path.join(hooksDir, name)).filter(isXpGateHook);
+}
+
+function isXpGateHook(file) {
+  if (!isFile(file)) return false;
+  try {
+    return /xp-gate/i.test(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return false;
   }
-  return hits;
 }
 
 section('0/6 基线快照');

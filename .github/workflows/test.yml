@@ -31,6 +31,12 @@ jobs:
       # No `npm install`: the suite uses the built-in node:test runner and has
       # no dependencies. An empty install step would only add a failure mode.
       - run: node --test tests/*.test.mjs
+      # The coverage floor Gate 5 enforces locally. Node 24 prints the numbers;
+      # scripts/coverage.mjs translates them to the istanbul artefact the gate
+      # reads, so this repo does not need vitest just to satisfy a file shape.
+      # Node 18/20 have no --experimental-test-coverage, so it runs on 22 only.
+      - if: matrix.node == '22'
+        run: node scripts/coverage.mjs
 
   mutation:
     name: mutation gate
@@ -43,6 +49,28 @@ jobs:
       # Fails if any injected defect survives the suite, i.e. if a property this
       # skill exists to guarantee has stopped being tested. See scripts/mutation.mjs.
       - run: node scripts/mutation.mjs
+
+  hp-gate:
+    name: complexity of .mjs sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install lizard
+      # xp-gate's Gate 3 never looks at this repo. Its LIZARD_EXTENSIONS and
+      # SEMGREP_EXTENSIONS are /\.(ts|tsx|js|jsx|py|go|java|...)$/ -- neither
+      # lists mjs -- so a pure-ESM project reports "no source files to check"
+      # and passes Gate 3 on complexity without measuring a single function
+      # (xp-gate#732, reproduced: the same code as src/a.js is checked and the
+      # same code as src/a.mjs is skipped). hp-gate runs lizard over
+      # .mjs/.cjs with the same CCN 5 threshold Gate 3 uses, so the number that
+      # would have been checked is now checked here.
+      - run: node scripts/hp-gate.mjs
 
   gate-audit:
     name: gates actually block

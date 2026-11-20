@@ -2,8 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { rmrf } from '../scripts/lib/util.mjs';
-
 /**
  * Shared fixtures for the test suite.
  *
@@ -11,12 +9,22 @@ import { rmrf } from '../scripts/lib/util.mjs';
  * write and expensive to keep correct: package layout, temp-dir cleanup and the
  * drift simulation all have to change together, and a stale copy silently tests
  * a layout the production code no longer produces.
+ *
+ * Each helper takes the `node:test` context so teardown is registered exactly
+ * once, by the test that owns the resource -- a helper that swallowed the
+ * context would leave every assertion after it running on a leaked tree.
  */
+
+/** Register `fn` for teardown on the test context, tolerating a bare object. */
+function after(t, fn) {
+  if (t && typeof t.after === 'function') t.after(fn);
+  return fn;
+}
 
 /** A temp dir registered for teardown, so a failing assertion still cleans up. */
 export function tmpDir(t, prefix = 'xgr-test-') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  t.after(() => rmrf(dir));
+  after(t, () => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
 

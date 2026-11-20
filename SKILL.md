@@ -151,18 +151,84 @@ Windows 下若 `node` 不在 PATH，用 `"/c/Program Files/nodejs/node.exe"` 加
 `audit.mjs` 补的是这一层：**建临时 git 仓库、种一个门禁该拦的缺陷、要求门禁自己说出来**，
 并且同一条门禁在干净树上必须不拦（对照组）。只有对照组与实验组分开，才能证明这个「拦住」有意义。
 
+十几行、三层分开报告：
+
+| 层 | 查什么 | 靠什么 |
+|---|---|---|
+| 1 静态 | 磁盘一致性（版本、hooks、skill 副本、插件） | `verify.mjs --quick --json` |
+| 2 灰盒 | 门禁是否真的拦住注入的缺陷 | `xp-gate check <id>`，实验组 + 对照组 |
+| 3 盲区 | xp-gate 扩展名列表看不见的 `.mjs`/`.cjs` | `hp-gate.mjs`（见下） |
+
 ```bash
-node scripts/audit.mjs          # 磁盘一致性 + 灰盒拦截，两层分开报告
+node scripts/audit.mjs          # 三层一起
 node scripts/audit.mjs --gates  # 只跑灰盒
+node scripts/audit.mjs --static # 只查磁盘一致性（等同 verify --quick）
 ```
 
 判定里 `detected` 与 `blocked` 分开：Gate 8 遇密钥退出 1，Gate 2 报 `Found N clones`
 但退出 0（实测有无克隆都是 0）。并成一个判定，不是冤枉 Gate 2 就是高估它。
 
-改这个 skill 的代码后跑 `node scripts/mutation.mjs`：往生产代码注入 8 个已知缺陷，
+**对照组自己被拦时判 `UNMEASURABLE`，不是 FAILED。** 实测环境：Gate 2 在本机控制组报
+`Gate 2 FAILED: spawnSync npx ENOENT`——而 jscpd 5.4.3 明明在 PATH 上。根因在上游：
+`lib/gate-runner.js` 探的是 `<root>/node_modules/jscpd/bin/jscpd`，但 jscpd 5.x 把 bin 改成了
+`run-jscpd.js`；三条回退路径在 Windows 上全部失败，且失败原因各不相同——
+`jscpd.cmd` → EINVAL（`.cmd` 必须有 shell）、`jscpd` → ENOENT（PATH 里是 shell 脚本）、
+`npx` → ENOENT（同理）。也就是说 jscpd ≥ 5 + Windows 下 Gate 2 **永远**是这句话，
+与代码好坏无关。把它当 FAILED 会让人以为「门禁坏了」，当 PASS 则是撒谎。
+Gate 2 不阻塞构建，代价只是重复代码这条信号缺失。
+
+### `hp-gate.mjs`：xp-gate 自己测不了的那一层
+
+根因是 xp-gate 的两个正则（`gates/common.ts`）：
+
+```ts
+const LIZARD_EXTENSIONS  = /\.(ts|tsx|js|jsx|py|go|java|swift|cpp|c|hpp|h|m|mm|kt|cs)$/;
+const SEMGREP_EXTENSIONS = /* 同上形状 */
+```
+
+**两个都没有 `mjs`/`cjs`。** 实测对照：同一段 CCN 22 的代码，叫 `src/a.js` 时 Gate 3
+输出「Checking complexity for source files… PASSED」；改名成 `src/a.mjs` 后立刻变成
+「⏭️ SKIPPED – Complexity (no source files to check)」——没有任何函数被量过。
+本项目是纯 ESM，所以在 Gate 3 眼里整棵树不存在。
+
+`hp-gate.mjs` 用同一个阈值（CCN > 5，与 `gates/gate-3.ts` 的 `CCN_THRESHOLD` 一致）
+对 `.mjs`/`.cjs` 跑 lizard，并额外 `node --check` 每个文件（Gate 1 同样漏 `.mjs`）：
+
+```bash
+node scripts/hp-gate.mjs           # 生产脚本 + 测试一起量
+node scripts/hp-gate.mjs --ccn 8   # 换阈值
+node scripts/hp-gate.mjs --json    # 给 audit 用
+```
+
+**「扫到 0 个函数」按扫描失败处理，不是按干净处理。** 这是踩过的坑：第一版漏了 `--csv`，
+lizard 什么都不输出，脚本对一棵含 CCN 22 函数的树报了 PASS；第二版加了 `--csv` 但读错列
+（读第 0 列 NLOC 而不是第 1 列 CCN），又是 0 行、又报干净。现在源码非空而 `ccn.length === 0`
+直接判 `scanBroken` 硬失败。
+
+### 字段序：`columns[0]` 是行数，`columns[1]` 才是 CCN
+
+lizard CSV 的字段序是 `nloc, cyclomatic_complexity, token_count, param, length, …`，
+直接读 lizard 1.26.1 的 `lizard_ext/csvoutput.py` 确认（它按字面顺序写这三个字段）。
+所以 `columns[0]` 是「行数」，`columns[1]` 才是 CCN。本项目第一版 hp-gate 读的是
+`columns[0]`，把行数当复杂度，于是 0 条违规、报干净——这是同一个功能第二次假通过
+（第一次是漏 `--csv`）。
+
+token 数（`columns[2]`）同样不能替代 CCN，实测行可以说明这个陷阱：
+
+```
+function simple(n){ const a=n+1; ...; return d; }   -> 7,1,54,...    CCN 1，token 54
+function branchy(n){ if.. if.. return -1 }          -> 5,3,25,...    CCN 3，token 25
+```
+
+分支最多的函数 token 反而最少。任何拿 token 数跟复杂度阈值比的检查，排序都是反的。
+
+`tests/ccn.test.mjs` 对三个数值列各钉了一条测试，这样这个错法不会再悄悄回来。
+
+改这个 skill 的代码后跑 `node scripts/mutation.mjs`：往生产代码注入 16 个已知缺陷，
 全部必须被测试抓到。全绿只证明「测试和代码看法一致」，不证明「代码错了测试会知道」——
 第一版 `pruneDeadRoots` 的测试就是这么假通过的。`error` 单独作为一种结果，避免
-「测试跑不起来」被误报成「变异存活」。
+「测试跑不起来」被误报成「变异存活」；`SKIPPED`（锚点过期）同样单独报告，
+因为锚点失配的变异什么也没验证，静默跳过会让门禁看起来还是绿的。
 
 ## 多 agent 矩阵
 

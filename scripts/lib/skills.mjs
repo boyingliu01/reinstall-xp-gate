@@ -3,19 +3,26 @@ import path from 'node:path';
 import { HOME } from './proc.mjs';
 import { copyTree, isDir, isFile, sameTree } from './util.mjs';
 
-export function bundledSkills(pkgDir) {
-  if (!pkgDir) return [];
-  const dir = path.join(pkgDir, 'skills');
-  let entries = [];
+function safeReaddir(dir) {
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
+    return fs.readdirSync(dir, { withFileTypes: true });
   } catch {
     return [];
   }
-  return entries
-    .filter((e) => e.isDirectory() && isFile(path.join(dir, e.name, 'SKILL.md')))
+}
+
+/** Names of the skills the installed package ships (`<pkg>/skills/<name>/SKILL.md`). */
+export function bundledSkills(pkgDir) {
+  if (!pkgDir) return [];
+  return safeReaddir(path.join(pkgDir, 'skills'))
+    .filter((e) => e.isDirectory() && isFile(path.join(pkgDir, 'skills', e.name, 'SKILL.md')))
     .map((e) => e.name)
     .sort();
+}
+
+function copyState(src, dest) {
+  if (!isDir(dest)) return 'missing';
+  return sameTree(src, dest) ? 'ok' : 'drift';
 }
 
 /**
@@ -29,9 +36,7 @@ export function planSkillCopies(pkgDir, roots) {
     for (const name of names) {
       const src = path.join(pkgDir, 'skills', name);
       const dest = path.join(root.dir, name);
-      let state = 'missing';
-      if (isDir(dest)) state = sameTree(src, dest) ? 'ok' : 'drift';
-      rows.push({ agent: root.agent, root: root.dir, name, src, dest, state });
+      rows.push({ agent: root.agent, root: root.dir, name, src, dest, state: copyState(src, dest) });
     }
   }
   return { names, rows };
@@ -48,7 +53,7 @@ export function summarizeRows(rows) {
   return byAgent;
 }
 
-function safeLabel(name) {
+export function safeLabel(name) {
   return String(name).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '') || 'agent';
 }
 
@@ -57,22 +62,18 @@ function safeLabel(name) {
  * @returns {Array} 实际处理的 row（含 applied / backup）
  */
 export function applySkillCopies(rows, { backupRoot, dryRun = false } = {}) {
-  const touched = [];
-  for (const row of rows) {
-    if (row.state === 'ok') continue;
-    if (dryRun) {
-      touched.push(row);
-      continue;
-    }
-    if (row.state === 'drift' && isDir(row.dest) && backupRoot) {
-      row.backup = path.join(backupRoot, safeLabel(row.agent), row.name);
-      copyTree(row.dest, row.backup);
-    }
-    copyTree(row.src, row.dest);
-    row.applied = true;
-    touched.push(row);
+  return rows.filter((row) => row.state !== 'ok').map((row) => applyOne(row, { backupRoot, dryRun }));
+}
+
+function applyOne(row, { backupRoot, dryRun }) {
+  if (dryRun) return row;
+  if (row.state === 'drift' && isDir(row.dest) && backupRoot) {
+    row.backup = path.join(backupRoot, safeLabel(row.agent), row.name);
+    copyTree(row.dest, row.backup);
   }
-  return touched;
+  copyTree(row.src, row.dest);
+  row.applied = true;
+  return row;
 }
 
 export function skillsBackupRoot() {

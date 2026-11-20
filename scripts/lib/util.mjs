@@ -4,35 +4,64 @@ import crypto from 'node:crypto';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', '.DS_Store', '.svn']);
 
-export function isFile(p) {
+function statOrNull(p) {
   try {
-    return fs.statSync(p).isFile();
+    return fs.statSync(p);
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isFile(p) {
+  return Boolean(statOrNull(p)?.isFile());
 }
 
 export function isDir(p) {
+  return Boolean(statOrNull(p)?.isDirectory());
+}
+
+/** `readdir` that treats an unreadable directory as empty instead of throwing. */
+function dirents(dir) {
   try {
-    return fs.statSync(p).isDirectory();
+    return fs.readdirSync(dir, { withFileTypes: true });
   } catch {
-    return false;
+    return [];
   }
 }
 
+function subdirsOf(dir) {
+  return dirents(dir)
+    .filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name))
+    .map((e) => path.join(dir, e.name));
+}
+
+function filesIn(dir, base) {
+  return dirents(dir)
+    .filter((e) => e.isFile() && !SKIP_DIRS.has(e.name))
+    .map((e) => path.relative(base, path.join(dir, e.name)).split(path.sep).join('/'));
+}
+
+/** Depth-first over every readable directory below `root`. */
+function walkDirs(root) {
+  const stack = [root];
+  const seen = [];
+  while (stack.length) {
+    const dir = stack.pop();
+    seen.push(dir);
+    stack.push(...subdirsOf(dir));
+  }
+  return seen;
+}
+
+/**
+ * Recursive relative-path listing, POSIX-separated and sorted.
+ *
+ * Iterative rather than recursive on purpose: the recursive version counted
+ * itself as one more cyclomatic branch per level and had to be reasoned about
+ * for stack depth on the deep trees this tool walks (`~/.local/share`).
+ */
 export function listFiles(root, base = root, out = []) {
-  let entries;
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (SKIP_DIRS.has(entry.name)) continue;
-    const abs = path.join(root, entry.name);
-    if (entry.isDirectory()) listFiles(abs, base, out);
-    else if (entry.isFile()) out.push(path.relative(base, abs).split(path.sep).join('/'));
-  }
+  for (const dir of walkDirs(root)) out.push(...filesIn(dir, base));
   return out.sort();
 }
 
@@ -84,11 +113,10 @@ export function writeJson(p, value) {
 }
 
 export function stamp(date = new Date()) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return [
-    `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`,
-    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`,
-  ].join('-');
+  const part = (n) => String(n).padStart(2, '0');
+  const ymd = `${date.getFullYear()}${part(date.getMonth() + 1)}${part(date.getDate())}`;
+  const hms = `${part(date.getHours())}${part(date.getMinutes())}${part(date.getSeconds())}`;
+  return `${ymd}-${hms}`;
 }
 
 export function stripNul(value) {

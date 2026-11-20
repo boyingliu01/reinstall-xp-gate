@@ -5,6 +5,13 @@ import { discoverSkillRoots, nativeDelphiAgents } from './agents.mjs';
 import { bundledSkills } from './skills.mjs';
 import { isFile, readJson, stamp, writeJson } from './util.mjs';
 
+/** Files in `~/.config/xp-gate` that are USER configuration, not install state. */
+const USER_CONFIG_FILES = ['.delphi-config.json', 'xp-gate.json'];
+
+export function cfgDir() {
+  return path.join(HOME, '.config', 'xp-gate');
+}
+
 export function runsRoot() {
   return path.join(HOME, '.local', 'share', 'xp-gate', 'reinstall-runs');
 }
@@ -17,14 +24,12 @@ export function makeRunDir() {
 
 /** 只复制用户配置，不复制 xp-gate 生成的安装状态。 */
 export function snapshotConfig(runDir) {
-  const cfgDir = path.join(HOME, '.config', 'xp-gate');
   const copied = [];
-  for (const name of ['.delphi-config.json', 'xp-gate.json']) {
-    const src = path.join(cfgDir, name);
-    if (isFile(src)) {
-      fs.copyFileSync(src, path.join(runDir, name));
-      copied.push(name);
-    }
+  for (const name of USER_CONFIG_FILES) {
+    const src = path.join(cfgDir(), name);
+    if (!isFile(src)) continue;
+    fs.copyFileSync(src, path.join(runDir, name));
+    copied.push(name);
   }
   return copied;
 }
@@ -33,7 +38,7 @@ export function snapshotConfig(runDir) {
 export function xpGateInfo(pkg = packageDir()) {
   return {
     packageDir: pkg,
-    version: pkg ? readJson(path.join(pkg, 'package.json'))?.version || '' : '',
+    version: (pkg && readJson(path.join(pkg, 'package.json'))?.version) || '',
   };
 }
 
@@ -64,27 +69,27 @@ export function doctorInfo(doctor) {
   return { ok: doctor.json.ok, issues: doctor.json.issues, checks: doctor.json.checks };
 }
 
+function npmVersion() {
+  return String(runNpm(['-v'], { timeout: 20000 }).stdout || '').trim();
+}
+
 /**
  * 卸载前的只读基线。每一步都必须在 purge 之前拿到，因为 purge 之后版本、
  * 配置、hooksPath 都会消失，没有基线就无法判断重装是否真的成功。
  */
 export function collectBaseline() {
   const pkg = packageDir();
-  const appConfig = readJson(path.join(HOME, '.config', 'xp-gate', 'xp-gate.json'));
-  const delphi = readJson(path.join(HOME, '.config', 'xp-gate', '.delphi-config.json'));
-  const doctor = xpJson(['doctor', '--json']);
-
   return {
     createdAt: new Date().toISOString(),
     platform: process.platform,
     home: HOME,
     node: process.version,
     nodePath: process.execPath,
-    npm: String(runNpm(['-v'], { timeout: 20000 }).stdout || '').trim(),
+    npm: npmVersion(),
     xpGate: xpGateInfo(pkg),
-    config: configInfo(appConfig),
-    delphi: delphiInfo(delphi),
-    doctor: doctorInfo(doctor),
+    config: configInfo(readJson(path.join(cfgDir(), 'xp-gate.json'))),
+    delphi: delphiInfo(readJson(path.join(cfgDir(), '.delphi-config.json'))),
+    doctor: doctorInfo(xpJson(['doctor', '--json'])),
     agents: discoverSkillRoots(),
     bundledSkills: bundledSkills(pkg),
     nativeAgents: nativeDelphiAgents(),

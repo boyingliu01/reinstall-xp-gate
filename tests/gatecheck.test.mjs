@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { verdictOf } from '../scripts/lib/gatecheck.mjs';
+import { verdictOf } from '../scripts/lib/verdict.mjs';
 
 // verdictOf is the only thing standing between a gate's output and the audit's
 // verdict. Two failure modes matter:
