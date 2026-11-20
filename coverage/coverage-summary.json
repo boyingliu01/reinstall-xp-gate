@@ -1,16 +1,30 @@
 {
   "total": {
     "lines": {
-      "pct": 88.29
+      "pct": 86.59
     },
     "branches": {
-      "pct": 93.14
+      "pct": 92.68
     },
     "functions": {
-      "pct": 82.18
+      "pct": 81.31
     },
     "statements": {
-      "pct": 88.29
+      "pct": 86.59
+    }
+  },
+  "coverage.mjs": {
+    "lines": {
+      "pct": 64.57
+    },
+    "branches": {
+      "pct": 86.67
+    },
+    "functions": {
+      "pct": 70
+    },
+    "statements": {
+      "pct": 64.57
     }
   },
   "agents.mjs": {
