@@ -36,15 +36,28 @@ function isPct(cell) {
 }
 
 /**
+ * Remove node's report decoration from the front of a line.
+ *
+ * Node 24 prefixes rows with the information emoji; node 22 uses tree glyphs
+ * (`#`, `├─`, `│`) and indentation instead. Stripping only the emoji left the
+ * file name reading `#   tools.mjs` on CI -- the row parsed, nothing failed, but
+ * the "worst file" line named a file that does not exist. Both CI shapes are
+ * pinned by tests/coverage.test.mjs.
+ */
+export function stripDecoration(line) {
+  return String(line || '').replace(/^[\u2139\s\u2502\u251c\u2514\u2500#]+/, '').trim();
+}
+
+/**
  * Keep only lines that look like `name.mjs | 12.3 | ...`.
  *
- * The emoji and the two-space indent are stripped first; without that the file
- * name of every row keeps a `ℹ ` prefix and no path matches anything real.
+ * The decoration is stripped first; without that the file name of every row
+ * keeps a prefix and reports a path that matches nothing on disk.
  */
 export function reportLines(text) {
   return String(text || '')
     .split(/\r?\n/)
-    .map((line) => line.replace(/^[\u2139\s]+/, '').trim())
+    .map(stripDecoration)
     .filter((line) => line.includes('|') && /\.mjs\b/.test(line));
 }
 

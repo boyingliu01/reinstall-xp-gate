@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { reportLines, fileRow, istanbulEntry } from '../scripts/coverage.mjs';
+import { reportLines, fileRow, istanbulEntry, stripDecoration } from '../scripts/coverage.mjs';
 
 // These pin the translation between Node's textual coverage report and the
 // istanbul artefact Gate 5 reads. Getting it wrong in the lenient direction
@@ -51,4 +51,19 @@ test('istanbulEntry emits the pct shape the gate reads', () => {
   assert.equal(entry.branches.pct, 93.14);
   assert.equal(entry.functions.pct, 81.47);
   assert.equal(entry.statements.pct, 88.29);
+});
+
+test('stripDecoration handles both node report shapes', () => {
+  // CI runs node 22 while local dev here is node 24, and they decorate the table
+  // differently. Stripping only the emoji left "#   tools.mjs" as a file name on
+  // CI: the row parsed and nothing failed, but the "worst file" line named a
+  // file that does not exist. Both shapes are pinned so that cannot regress.
+  assert.equal(stripDecoration('ℹ    ccn.mjs   | 100.00 |'), 'ccn.mjs   | 100.00 |');
+  assert.equal(stripDecoration('ℹ #   tools.mjs  | 43.33 |'), 'tools.mjs  | 43.33 |');
+  assert.equal(stripDecoration('ℹ ├─ util.mjs | 9 |'), 'util.mjs | 9 |');
+});
+
+test('node 22 tree rows survive the full parse', () => {
+  const rows = reportLines('ℹ #   tools.mjs      |  43.33 |   100.00 |   15.79 | 35-38').map(fileRow).filter(Boolean);
+  assert.deepEqual(rows.map((r) => r.file), ['tools.mjs']);
 });
