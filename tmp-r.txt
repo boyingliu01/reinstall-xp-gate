@@ -1,0 +1,4 @@
+Release 1.3.3
+
+Records that an uninstalled agent's unconditional doctor check is now
+reported as not applicable instead of as a failure.
