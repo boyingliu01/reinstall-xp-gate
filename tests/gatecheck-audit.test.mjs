@@ -67,6 +67,16 @@ test('every declared case states an explicit expected verdict', () => {
   }
 });
 
+test('Gate 2 is expected to block, because 0.38.75 added a threshold', () => {
+  // Pinned because the expectation silently rotted once already: until 0.38.74
+  // jscpd was invoked without --threshold and returns 0 no matter how much it
+  // finds, so Gate 2 could only ever 'detect'. When the audit kept expecting
+  // 'detected' after the gate started failing, a working gate was reported as
+  // FAILED -- the audit cried wolf on its own improvement.
+  const gate2 = CASES.find((c) => c.id === 2);
+  assert.equal(gate2.expect, 'blocked');
+});
+
 test('the gate ids under test are unique', () => {
   const ids = CASES.map((c) => c.id);
   assert.equal(new Set(ids).size, ids.length);

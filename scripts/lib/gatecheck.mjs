@@ -174,10 +174,17 @@ export const CASES = [
       fs.writeFileSync(path.join(dir, 'src', 'a.js'), `${body}\nmodule.exports = 1;\n`);
       fs.writeFileSync(path.join(dir, 'src', 'b.js'), `${body}\nmodule.exports = 2;\n`);
     },
-    // Measured: `xp-gate check 2` exits 0 both with and without clones. Duplicate
-    // code is reported, never enforced, so 'blocked' would be a false expectation
-    // that could only ever be "fixed" by changing the gate's severity policy.
-    expect: 'detected',
+    // Expectation updated for xp-gate 0.38.75. Until 0.38.74 Gate 2 forwarded
+    // jscpd's exit code without `--threshold`, and jscpd returns 0 regardless of
+    // how much it finds, so the gate passed unconditionally and this case could
+    // only expect 'detected'. `buildJscpdArgs` (lib/gate-runner.js) now passes
+    // `--threshold 15`, making duplication a blocking finding.
+    //
+    // Measured 2026-11-21 on 0.38.75 with this exact fixture: "Found 1 clones",
+    // then "ERROR: jscpd found too many duplicates (50.0%) over threshold
+    // (15.0%)" and the gate FAILED. A fixture below the threshold still passes,
+    // so this is a real separation rather than a gate that now always fails.
+    expect: 'blocked',
   },
 ];
 
