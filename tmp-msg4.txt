@@ -1,0 +1,5 @@
+Release 1.3.2
+
+Records the Gate 2 expectation fix: xp-gate 0.38.75 made duplicate code a
+blocking finding, and the audit was still expecting the old non-blocking
+verdict, so it reported a working gate as broken.

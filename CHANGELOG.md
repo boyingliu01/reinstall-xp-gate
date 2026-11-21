@@ -4,6 +4,25 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-02-21
+
+### Fixed
+
+- **The audit reported a stronger gate as broken.** xp-gate 0.38.75 added
+  `--threshold 15` to Gate 2's jscpd invocation; before that jscpd was called
+  without a threshold, returned 0 no matter how much duplication it found, and
+  the gate passed unconditionally — which is why the case could only ever expect
+  `detected`. Once the gate started failing, the stale expectation reported it as
+  FAILED. Verified on 0.38.75 with the planted fixture: `Found 1 clones`, then
+  `ERROR: jscpd found too many duplicates (50.0%) over threshold (15.0%)`. The
+  control tree still passes, so the case separates rather than failing always.
+
+### Changed
+
+- This closes the Gate 2 gap recorded in 1.3.0, where the audit called Gate 2
+  permanently UNMEASURABLE on Windows with jscpd >= 5. It now measures, and
+  measures correctly: audit 13/13 PASS with 3/3 cases separating.
+
 ## [1.3.1] - 2026-02-21
 
 The theme: **the installer's own maintenance state had no bound.**
