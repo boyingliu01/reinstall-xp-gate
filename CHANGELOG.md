@@ -4,6 +4,36 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-02-21
+
+The theme: **the installer's own maintenance state had no bound.**
+
+### Fixed
+
+- **`install.mjs` grew its backup directory without limit.** Every run backs up
+  each agent copy it is about to overwrite and nothing ever removed one.
+  Measured before the policy existed: 50 backups / 11 MB dating back to v1.1.0,
+  growing by one set per install. `pruneBackups` now keeps the newest 3 stamped
+  backups **per agent**. The cap is per label rather than per directory because
+  one run backs up all nine agents with the same timestamp, so a global cap of 3
+  would delete six of the backups that run had just written — the retain count
+  would be spent on simultaneity instead of history, and rolling back one agent
+  would be impossible while its siblings survived.
+- **`toolReport()` crashed with "lookup is not a function".** `rows.map(classify)`
+  passes `(value, index, array)`, so the index landed in the `lookup` parameter.
+  `verify.mjs` died outright while every unit test stayed green, because they all
+  passed `lookup` explicitly. The map call is now an explicit arrow.
+
+### Added
+
+- `tests/cleanup.test.mjs`: 7 cases covering pruning (per-agent cap, name-stamp
+  ordering over mtime, unrecognised directories spared, no-op guards) and the
+  map-arity regression. An earlier version of the arity test called
+  `toolReport()` and hung the suite for 60 s shelling out to npm/pip for all
+  eight tools; it now drives `classify` through `map` with a fake lookup.
+- 3 mutation entries for the pruning rules, so the retention policy cannot
+  regress silently. 19/19 mutations killed.
+
 ## [1.3.0] - 2026-02-19
 
 The theme: **make the quality claims measurable.** Three separate checks in this
