@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOME } from './proc.mjs';
-import { copyTree, isDir, isFile, sameTree } from './util.mjs';
+import { copyTree, isDir, isFile, pruneBackups, sameTree } from './util.mjs';
 
 function safeReaddir(dir) {
   try {
@@ -70,6 +70,7 @@ function applyOne(row, { backupRoot, dryRun }) {
   if (row.state === 'drift' && isDir(row.dest) && backupRoot) {
     row.backup = path.join(backupRoot, safeLabel(row.agent), row.name);
     copyTree(row.dest, row.backup);
+    pruneBackups(backupRoot);
   }
   copyTree(row.src, row.dest);
   row.applied = true;

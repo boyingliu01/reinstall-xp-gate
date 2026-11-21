@@ -150,6 +150,27 @@ const MUTATIONS = [
     to: '    pass: judged.every((r) => r.ok),',
     breaks: 'an audit that measured nothing still reports a pass',
   },
+  {
+    name: 'pruneBackups caps the whole directory instead of each agent',
+    file: 'scripts/lib/util.mjs',
+    from: '  const doomed = [...groupByLabel(root).values()].flatMap((names) => names.slice(keep));',
+    to: '  const doomed = stampedNames(root).slice(keep);',
+    breaks: 'one install run backs up all 9 agents at once, so 6 are deleted instantly and cannot be rolled back',
+  },
+  {
+    name: 'pruneBackups keeps the oldest stamps',
+    file: 'scripts/lib/util.mjs',
+    from: 'names.sort((a, b) => STAMP_TAIL(b).localeCompare(STAMP_TAIL(a)))',
+    to: 'names.sort((a, b) => STAMP_TAIL(a).localeCompare(STAMP_TAIL(b)))',
+    breaks: 'the most recent install is discarded and the stale copies survive',
+  },
+  {
+    name: 'stampedNames accepts any directory',
+    file: 'scripts/lib/util.mjs',
+    from: "    .filter((d) => d.isDirectory() && STAMPED.test(d.name))",
+    to: "    .filter((d) => d.isDirectory())",
+    breaks: "an operator's own directory under the backup root is deleted without warning",
+  },
 ];
 
 function runSuite() {

@@ -163,7 +163,10 @@ export function statusOf(row) {
 /** 8 个门禁 CLI 的存在性 + 版本 + 可达最新。 */
 export async function toolReport() {
   const rows = TOOLS.map(detect);
-  await Promise.all(rows.map(classify));
+  // Not `rows.map(classify)`: map passes (value, index, array), so the index
+  // lands in the `lookup` parameter and every call dies with "lookup is not a
+  // function". The default only applies when the argument is undefined.
+  await Promise.all(rows.map((row) => classify(row)));
   return rows;
 }
 

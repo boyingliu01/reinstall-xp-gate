@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { HOME } from './proc.mjs';
-import { copyTree, isDir, isFile, sameTree, stamp } from './util.mjs';
+import { copyTree, isDir, isFile, pruneBackups, sameTree, stamp } from './util.mjs';
 
 const SKILL_NAME = 'xp-gate-reinstall';
 
@@ -29,7 +29,13 @@ function syncOne(source, root, dryRun) {
   }
   const state = stateFor(source, dest);
   if (state !== 'ok' && !dryRun) {
-    if (state === 'update') copyTree(dest, backupDirFor(root.agent));
+    if (state === 'update') {
+      const backup = backupDirFor(root.agent);
+      copyTree(dest, backup);
+      // Bound the set this very line just grew: without this the directory keeps
+      // one copy of the skill per install, forever.
+      pruneBackups(path.dirname(backup));
+    }
     copyTree(source, dest);
   }
   return { agent: root.agent, dir: root.dir, dest, state };
