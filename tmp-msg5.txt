@@ -1,4 +1,0 @@
-Remove a stray commit-message file
-
-tmp-msg4.txt was staged by `git add -A` alongside the release and should never
-have been tracked.
