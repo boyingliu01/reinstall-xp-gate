@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOME, packageDir, runNpm, xpJson, gitConfig } from './lib/proc.mjs';
-import { discoverSkillRoots, nativeDelphiAgents } from './lib/agents.mjs';
+import { discoverSkillRoots, nativeDelphiAgents, agentInstalled } from './lib/agents.mjs';
 import { planSkillCopies, summarizeRows } from './lib/skills.mjs';
 import { toolReport, cmpVersion } from './lib/tools.mjs';
 import { readJson, isDir, isFile } from './lib/util.mjs';
@@ -54,12 +54,38 @@ if (!hooksPath) {
   else add('hooks', 'PASS', `${hooksPath} 含 ${required.join('/')}`);
 }
 
+/**
+ * A doctor check that can only ever fail because an agent is not installed.
+ *
+ * `doctor-tui.js` requires `~/.config/opencode/tui.json` unconditionally and
+ * reports "TUI registration: FAIL / Not registered" when it is absent, without
+ * checking whether OpenCode exists. After OpenCode is removed that check is
+ * unsatisfiable by design: the only way to pass it is to reinstall the editor
+ * the user deleted. Reporting it as a failure would make this audit
+ * permanently red for a correct configuration, and quietly PASSing it would
+ * hide a real misconfiguration on a machine that DOES use OpenCode -- which is
+ * why the branch is gated on the CLI actually being absent.
+ */
+function isVacuousForMissingAgent(check) {
+  return /TUI registration/i.test(String(check.name)) && !agentInstalled('OpenCode');
+}
+
 const doctor = xpJson(['doctor', '--json'], { timeout: 300000 });
 if (!doctor.json?.checks) {
   add('doctor', 'FAIL', `doctor --json 无输出: ${String(doctor.stderr || '').slice(0, 200)}`);
 } else {
-  const fails = doctor.json.checks.filter((c) => String(c.status).toUpperCase() === 'FAIL');
+  const fails = doctor.json.checks
+    .filter((c) => String(c.status).toUpperCase() === 'FAIL')
+    .filter((c) => !isVacuousForMissingAgent(c));
   const warns = doctor.json.checks.filter((c) => String(c.status).toUpperCase() === 'WARN');
+  const dropped = doctor.json.checks
+    .filter((c) => String(c.status).toUpperCase() === 'FAIL')
+    .filter((c) => isVacuousForMissingAgent(c));
+  if (dropped.length) {
+    // Named out loud rather than silently dropped: "we ignored a FAIL" must be
+    // visible, or the next reader cannot tell a tolerated gap from a clean run.
+    add('doctor (not applicable)', 'SKIP', dropped.map((c) => `${c.name}: ${c.detail} — OpenCode 未安装`).join(' | '));
+  }
   if (fails.length) add('doctor', 'FAIL', fails.map((c) => `${c.name}: ${c.detail}`).join(' | '));
   else add('doctor', warns.length ? 'WARN' : 'PASS', warns.length ? warns.map((c) => `${c.name}: ${c.detail}`).join(' | ') : `ok=${doctor.json.ok}`);
 }

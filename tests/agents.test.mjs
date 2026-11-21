@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { labelFor, isOfficialSkillRoot, probeLiveness } from '../scripts/lib/agents.mjs';
+import { labelFor, isOfficialSkillRoot, probeLiveness, agentInstalled } from '../scripts/lib/agents.mjs';
 import { HOME } from '../scripts/lib/proc.mjs';
 
 // NOTE: discoverSkillRoots() is deliberately NOT unit-tested here because it
@@ -64,4 +64,15 @@ test('probeLiveness honours the liveDays window argument', () => {
   assert.equal(probeLiveness(entry, 0).live, false);
   // Missing dir -> Infinity days, past any finite window.
   assert.equal(probeLiveness(entry, 100000).live, false);
+});
+
+test('agentInstalled reports a CLI that is not on PATH as absent', () => {
+  // The one consumer is verify.mjs, deciding whether xp-gate's unconditional
+  // "TUI registration" check is worth reporting. A CLI that cannot be resolved
+  // is the signal that the agent is gone; a config directory alone is not
+  // evidence, because leftovers survive an uninstall.
+  assert.equal(typeof agentInstalled('OpenCode'), 'boolean');
+  // A name with no CLI probe can never be "installed" by this measure.
+  assert.equal(agentInstalled('Generic agents'), false);
+  assert.equal(agentInstalled('No Such Agent'), false);
 });

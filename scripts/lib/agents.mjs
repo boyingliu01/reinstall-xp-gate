@@ -129,6 +129,24 @@ function cliEvidence(agent) {
 }
 
 /**
+ * Whether an agent's CLI resolves on PATH right now.
+ *
+ * Needed because xp-gate's doctor hard-requires artefacts for agents that may
+ * simply not be installed: `doctor-tui.js` reports
+ * `TUI registration: FAIL / Not registered` whenever
+ * `~/.config/opencode/tui.json` is missing, without ever asking whether
+ * OpenCode exists. On a machine that has removed OpenCode the check is
+ * unsatisfiable by design -- the only way to "fix" it would be to reinstall the
+ * editor the user just deleted. Callers use this to report "not applicable"
+ * instead of inventing a failure.
+ *
+ * @returns {boolean} true when the CLI resolves
+ */
+export function agentInstalled(agent) {
+  return Boolean(cliEvidence(agent));
+}
+
+/**
  * 证据之三：agent 配置目录近 N 天有写入。DSH 这类二进制不在 PATH 上的情况
  * 只能靠它兜底。
  * @returns {number} 距今天数；目录不可读时返回 Infinity

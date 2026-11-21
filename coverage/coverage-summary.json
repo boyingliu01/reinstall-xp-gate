@@ -1,16 +1,16 @@
 {
   "total": {
     "lines": {
-      "pct": 86.87
+      "pct": 87.25
     },
     "branches": {
-      "pct": 92.89
+      "pct": 92.95
     },
     "functions": {
-      "pct": 81.31
+      "pct": 81.5
     },
     "statements": {
-      "pct": 86.87
+      "pct": 87.25
     }
   },
   "coverage.mjs": {
@@ -29,16 +29,16 @@
   },
   "agents.mjs": {
     "lines": {
-      "pct": 79.35
+      "pct": 81.51
     },
     "branches": {
-      "pct": 75
+      "pct": 80
     },
     "functions": {
-      "pct": 60
+      "pct": 61.54
     },
     "statements": {
-      "pct": 79.35
+      "pct": 81.51
     }
   },
   "baseline.mjs": {
@@ -85,16 +85,16 @@
   },
   "proc.mjs": {
     "lines": {
-      "pct": 72.02
+      "pct": 75.23
     },
     "branches": {
-      "pct": 70.73
+      "pct": 66.67
     },
     "functions": {
-      "pct": 69.23
+      "pct": 70.37
     },
     "statements": {
-      "pct": 72.02
+      "pct": 75.23
     }
   },
   "report.mjs": {

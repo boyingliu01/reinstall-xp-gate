@@ -4,6 +4,26 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [1.3.3] - 2026-02-21
+
+### Fixed
+
+- **A doctor FAIL that could only be fixed by reinstalling the editor the user
+  deliberately removed.** `doctor-tui.js` requires `~/.config/opencode/tui.json`
+  unconditionally and reports `TUI registration: FAIL / Not registered` when it
+  is absent, without ever asking whether OpenCode exists. Once OpenCode was
+  uninstalled the check became unsatisfiable by design, and `verify.mjs` passed
+  every doctor FAIL straight through — so a correct configuration reported as a
+  broken one.
+
+  `agentInstalled` (new, in `lib/agents.mjs`) resolves the agent's CLI, and
+  `verify.mjs` now reports this one check as `SKIP` with the reason attached
+  rather than `FAIL`. The branch is gated on the CLI actually being absent, so a
+  machine that still uses OpenCode keeps failing loudly when its TUI is
+  unregistered. Dropping the FAIL silently was the alternative and was rejected:
+  the SKIP names the check and says why, so a tolerated gap is distinguishable
+  from a clean run.
+
 ## [1.3.2] - 2026-02-21
 
 ### Fixed
