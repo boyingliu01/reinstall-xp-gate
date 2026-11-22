@@ -32,6 +32,20 @@ function probeAll(path = (n) => `/usr/bin/${n}`, version = '1.0.0') {
 }
 
 /**
+ * Report every pip row as present without asking pip.
+ *
+ * Several cases need the pip rows past `classify`'s 'missing' short-circuit to
+ * reach the lookup under test; this is that setup, written once.
+ */
+function pipPresent(version = '1.0.0') {
+  return (spec, row) => {
+    row.present = true;
+    row.version = version;
+    row.path = '/usr/bin/pip-tool';
+  };
+}
+
+/**
  * A fully isolated dependency set for toolReport.
  *
  * Every field is injected because omitting one makes toolReport fall back to the
@@ -90,11 +104,7 @@ test('the latest-version lookup reaches every tool kind', async () => {
   const asked = {};
   await toolReport(isolated({
     toolVersion: probeAll(),
-    pipProbe: (spec, row) => {
-      row.present = true;
-      row.version = '1.0.0';
-      row.path = '/usr/bin/pip-tool';
-    },
+    pipProbe: pipPresent(),
     lookup: async (row) => {
       (asked[row.kind] ||= []).push(row.name);
       return '';
@@ -182,11 +192,7 @@ test('toolReport marks a tool whose latest lookup failed as unverified, not ok',
     toolVersion: probeAll(),
     // pip rows must be present too, otherwise they short-circuit to 'missing'
     // and never reach the lookup this test is about.
-    pipProbe: (spec, row) => {
-      row.present = true;
-      row.version = '1.0.0';
-      row.path = '/usr/bin/pip-tool';
-    },
+    pipProbe: pipPresent(),
     lookup: async () => '',
   }));
   const present = rows.filter((r) => r.present && r.kind !== 'node');
@@ -199,11 +205,7 @@ test('toolReport marks a tool whose latest lookup failed as unverified, not ok',
 test('toolReport keeps npx ok when the lookup fails, since it has no peer version', async () => {
   const rows = await toolReport(isolated({
     toolVersion: probeAll(undefined, '24.0.0'),
-    pipProbe: (spec, row) => {
-      row.present = true;
-      row.version = '1.0.0';
-      row.path = '/usr/bin/pip-tool';
-    },
+    pipProbe: pipPresent(),
   }));
   const nodeRow = rows.find((r) => r.kind === 'node');
   assert.equal(nodeRow.status, 'ok');
@@ -212,11 +214,7 @@ test('toolReport keeps npx ok when the lookup fails, since it has no peer versio
 test('toolReport flags a tool that is behind as outdated', async () => {
   const rows = await toolReport(isolated({
     toolVersion: probeAll(),
-    pipProbe: (spec, row) => {
-      row.present = true;
-      row.version = '1.0.0';
-      row.path = '/usr/bin/pip-tool';
-    },
+    pipProbe: pipPresent(),
     lookup: async () => '2.5.0',
   }));
   const outdated = rows.filter((r) => r.status === 'outdated');

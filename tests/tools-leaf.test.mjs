@@ -189,13 +189,27 @@ test('githubLatest returns empty when the request fails', async () => {
 
 // ── pipProbe ─────────────────────────────────────────────────────────────────
 
-test('pipProbe records pip metadata when pip show answers', () => {
-  const row = { name: 'lizard', kind: 'pip', pkg: 'lizard', path: '', present: false, version: '', latest: '' };
-  pipProbe({ name: 'lizard', pkg: 'lizard' }, row, {
+/** A fresh, unprobed pip row. Each test owns its own so order cannot leak. */
+function pipRow(name = 'lizard') {
+  return { name, kind: 'pip', pkg: name, path: '', present: false, version: '', latest: '' };
+}
+
+/**
+ * Run pipProbe with pip metadata answering `shown` and the PATH probe at `path`.
+ * The metadata branch decides version/path precedence, so every case here
+ * controls the two sources independently.
+ */
+function probeWithPip(row, { shown = '1.17.10', path = '/usr/bin/lizard', version = '1.17.10' } = {}) {
+  pipProbe({ name: row.name, pkg: row.pkg }, row, {
     pythonBin: () => '/usr/bin/python3',
-    pipShowVersion: () => '1.17.10',
-    toolVersion: () => ({ path: '/usr/bin/lizard', version: '1.17.10' }),
+    pipShowVersion: () => shown,
+    toolVersion: () => ({ path, version }),
   });
+  return row;
+}
+
+test('pipProbe records pip metadata when pip show answers', () => {
+  const row = probeWithPip(pipRow());
   assert.equal(row.present, true);
   assert.equal(row.version, '1.17.10');
   assert.equal(row.path, '/usr/bin/lizard');
@@ -204,7 +218,7 @@ test('pipProbe records pip metadata when pip show answers', () => {
 test('pipProbe synthesises a path when pip knows the package but PATH does not', () => {
   // Installed in a venv that is not on PATH: still present, and the path has to
   // say how to reach it rather than being empty.
-  const row = { name: 'lizard', kind: 'pip', pkg: 'lizard', path: '', present: false, version: '', latest: '' };
+  const row = pipRow();
   pipProbe({ name: 'lizard', pkg: 'lizard' }, row, {
     pythonBin: () => '/usr/bin/python3',
     pipShowVersion: () => '1.17.10',
@@ -215,7 +229,7 @@ test('pipProbe synthesises a path when pip knows the package but PATH does not',
 });
 
 test('pipProbe falls back to the PATH probe when pip metadata is empty', () => {
-  const row = { name: 'lizard', kind: 'pip', pkg: 'lizard', path: '', present: false, version: '', latest: '' };
+  const row = pipRow();
   pipProbe({ name: 'lizard', pkg: 'lizard' }, row, {
     pythonBin: () => '/usr/bin/python3',
     pipShowVersion: () => '',
@@ -227,7 +241,7 @@ test('pipProbe falls back to the PATH probe when pip metadata is empty', () => {
 });
 
 test('pipProbe leaves the row absent when neither source answers', () => {
-  const row = { name: 'lizard', kind: 'pip', pkg: 'lizard', path: '', present: false, version: '', latest: '' };
+  const row = pipRow();
   pipProbe({ name: 'lizard', pkg: 'lizard' }, row, {
     pythonBin: () => '',
     pipShowVersion: () => '',
