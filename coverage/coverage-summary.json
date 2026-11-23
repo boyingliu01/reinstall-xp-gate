@@ -1,16 +1,16 @@
 {
   "total": {
     "lines": {
-      "pct": 92.59
+      "pct": 93.8
     },
     "branches": {
-      "pct": 92.24
+      "pct": 92.63
     },
     "functions": {
-      "pct": 89.05
+      "pct": 90.31
     },
     "statements": {
-      "pct": 92.59
+      "pct": 93.8
     }
   },
   "coverage.mjs": {
@@ -27,18 +27,46 @@
       "pct": 67.86
     }
   },
-  "agents.mjs": {
+  "agent-paths.mjs": {
     "lines": {
-      "pct": 81.51
+      "pct": 96
     },
     "branches": {
-      "pct": 80.65
+      "pct": 75
     },
     "functions": {
-      "pct": 61.54
+      "pct": 80
     },
     "statements": {
-      "pct": 81.51
+      "pct": 96
+    }
+  },
+  "agents.mjs": {
+    "lines": {
+      "pct": 78.1
+    },
+    "branches": {
+      "pct": 83.33
+    },
+    "functions": {
+      "pct": 57.14
+    },
+    "statements": {
+      "pct": 78.1
+    }
+  },
+  "backups.mjs": {
+    "lines": {
+      "pct": 97.92
+    },
+    "branches": {
+      "pct": 94.74
+    },
+    "functions": {
+      "pct": 100
+    },
+    "statements": {
+      "pct": 97.92
     }
   },
   "baseline.mjs": {
@@ -83,6 +111,20 @@
       "pct": 91.8
     }
   },
+  "fs-tree.mjs": {
+    "lines": {
+      "pct": 98.15
+    },
+    "branches": {
+      "pct": 94.29
+    },
+    "functions": {
+      "pct": 100
+    },
+    "statements": {
+      "pct": 98.15
+    }
+  },
   "gatecheck.mjs": {
     "lines": {
       "pct": 94.14
@@ -97,18 +139,74 @@
       "pct": 94.14
     }
   },
-  "proc.mjs": {
+  "json-file.mjs": {
     "lines": {
-      "pct": 80.28
+      "pct": 100
     },
     "branches": {
-      "pct": 79.63
+      "pct": 100
     },
     "functions": {
-      "pct": 75
+      "pct": 100
     },
     "statements": {
-      "pct": 80.28
+      "pct": 100
+    }
+  },
+  "mutations.mjs": {
+    "lines": {
+      "pct": 100
+    },
+    "branches": {
+      "pct": 100
+    },
+    "functions": {
+      "pct": 100
+    },
+    "statements": {
+      "pct": 100
+    }
+  },
+  "platform.mjs": {
+    "lines": {
+      "pct": 89.13
+    },
+    "branches": {
+      "pct": 94.12
+    },
+    "functions": {
+      "pct": 77.78
+    },
+    "statements": {
+      "pct": 89.13
+    }
+  },
+  "probes.mjs": {
+    "lines": {
+      "pct": 100
+    },
+    "branches": {
+      "pct": 92.5
+    },
+    "functions": {
+      "pct": 100
+    },
+    "statements": {
+      "pct": 100
+    }
+  },
+  "proc.mjs": {
+    "lines": {
+      "pct": 100
+    },
+    "branches": {
+      "pct": 100
+    },
+    "functions": {
+      "pct": 100
+    },
+    "statements": {
+      "pct": 100
     }
   },
   "report.mjs": {
@@ -153,6 +251,20 @@
       "pct": 96.69
     }
   },
+  "spawn.mjs": {
+    "lines": {
+      "pct": 81.99
+    },
+    "branches": {
+      "pct": 69.23
+    },
+    "functions": {
+      "pct": 75
+    },
+    "statements": {
+      "pct": 81.99
+    }
+  },
   "testreport.mjs": {
     "lines": {
       "pct": 100
@@ -172,10 +284,10 @@
       "pct": 100
     },
     "branches": {
-      "pct": 95.19
+      "pct": 96.3
     },
     "functions": {
-      "pct": 96.43
+      "pct": 93.75
     },
     "statements": {
       "pct": 100
@@ -183,16 +295,16 @@
   },
   "util.mjs": {
     "lines": {
-      "pct": 98.99
+      "pct": 100
     },
     "branches": {
-      "pct": 96.55
+      "pct": 100
     },
     "functions": {
       "pct": 100
     },
     "statements": {
-      "pct": 98.99
+      "pct": 100
     }
   },
   "verdict.mjs": {
@@ -207,6 +319,34 @@
     },
     "statements": {
       "pct": 100
+    }
+  },
+  "version.mjs": {
+    "lines": {
+      "pct": 100
+    },
+    "branches": {
+      "pct": 100
+    },
+    "functions": {
+      "pct": 100
+    },
+    "statements": {
+      "pct": 100
+    }
+  },
+  "xp-cli.mjs": {
+    "lines": {
+      "pct": 75.76
+    },
+    "branches": {
+      "pct": 84.62
+    },
+    "functions": {
+      "pct": 71.43
+    },
+    "statements": {
+      "pct": 75.76
     }
   },
   "fixtures.mjs": {

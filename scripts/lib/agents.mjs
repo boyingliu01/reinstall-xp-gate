@@ -2,40 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HOME, which } from './proc.mjs';
 import { isDir } from './util.mjs';
-
-/**
- * Agent labels for every config directory this skill knows about.
- *
- * These are DIRECTORY names, so they are matched case-insensitively against a
- * path relative to HOME. Adding an agent here is what makes it report as
- * "Trae CN" instead of "trae cn".
- */
-const KNOWN_LABELS = {
-  '.agents': 'Generic agents',
-  '.claude': 'Claude Code',
-  '.cline': 'Cline',
-  '.codebuddy': 'CodeBuddy',
-  '.codex': 'Codex',
-  '.config/opencode': 'OpenCode',
-  '.dsh': 'DSH',
-  '.dws': 'DWS',
-  '.pi/agent': 'Pi',
-  '.qoder': 'Qoder',
-  '.qoder-cn': 'Qoder CN',
-  '.trae': 'Trae',
-  '.trae-cn': 'Trae CN',
-  '.trae-aicc': 'Trae AICC',
-  '.workbuddy': 'WorkBuddy',
-  doubaowork: 'Doubao Work',
-};
-
-/** xp-gate 的 installer 本身认识的平台；其余 agent 由本脚本直接复制。 */
-export const OFFICIAL_ROOTS = new Set([
-  '.qoder/skills',
-  '.claude/skills',
-  '.config/opencode/skills',
-  '.dsh/skills',
-]);
+import { relToHome, agentHomeFor, labelFor } from './agent-paths.mjs';
 
 /** 桌面/IDE 安装目录：存在即说明 agent 还在用（配置目录卸载后常残留）。 */
 const APP_PROBES = {
@@ -76,35 +43,6 @@ function safeReaddir(dir) {
   } catch {
     return [];
   }
-}
-
-/** Path relative to HOME with forward slashes, which is what the tables use. */
-export function relToHome(abs) {
-  return path.relative(HOME, abs).split(path.sep).join('/');
-}
-
-/**
- * 空目录也算：新装的 agent 常常先建好 skills/ 但还没有内容，恰恰是最需要分发的地方。
- * 路径本身已由三条固定模式产生，不会误扫用户数据目录。
- */
-function looksLikeSkillRoot(dir) {
-  return isDir(dir);
-}
-
-export function labelFor(skillRoot) {
-  const base = relToHome(skillRoot).replace(/\/skills$/, '');
-  return KNOWN_LABELS[base.toLowerCase()] || base.replace(/^\./, '').replace(/[/-]+/g, ' ');
-}
-
-export function isOfficialSkillRoot(skillRoot) {
-  return OFFICIAL_ROOTS.has(relToHome(skillRoot));
-}
-
-export function agentHomeFor(skillRoot) {
-  const parts = path.relative(HOME, skillRoot).split(path.sep);
-  return parts[0] === '.config' && parts.length > 2
-    ? path.join(HOME, parts[0], parts[1])
-    : path.join(HOME, parts[0]);
 }
 
 /**
@@ -263,3 +201,10 @@ export function hookTemplateDirs(roots) {
   ]);
   return [...dirs].filter(isDir);
 }
+
+// Labels, official roots and the HOME-relative path helpers live in
+// `agent-paths.mjs`; re-exported so `agents.mjs` stays one import for a caller
+// asking about agents.
+export {
+  OFFICIAL_ROOTS, relToHome, labelFor, isOfficialSkillRoot, agentHomeFor,
+} from './agent-paths.mjs';

@@ -1,14 +1,24 @@
 import { runNpm, toolVersion, which, run } from './proc.mjs';
+import { semverOf, cmpVersion } from './version.mjs';
+import {
+  PACKAGE_INSTALL_TIMEOUT_MS,
+  npmLatest,
+  pythonBin,
+  pipShowVersion,
+  pipLatest,
+  pypiLatest,
+  githubLatest,
+} from './probes.mjs';
 
 /**
- * Budget for installing a global package, shared by the npm and pip paths.
+ * Classifying the gate tools: what is installed, what is newest, what to do.
  *
- * These two carried the same bare 600000: one intent copied twice, so fixing a
- * slow install on one side left the other behind. Unlike the lookup timeouts in
- * proc.mjs (which are separate decisions that happen to share a number), this
- * really is one budget for one kind of operation.
+ * Gate 4 flagged this module for owning 18 exports against a maximum of 10. The
+ * count came from three jobs living together -- parsing versions, asking each
+ * package manager for one, and combining the answers into a report. The first
+ * two moved to `version.mjs` and `probes.mjs`; this file keeps the orchestration
+ * and the report rows, which is what `verify` and `reinstall` actually want.
  */
-export const PACKAGE_INSTALL_TIMEOUT_MS = 600000;
 
 export const TOOLS = [
   { name: 'jscpd', kind: 'npm', pkg: 'jscpd' },
@@ -20,134 +30,6 @@ export const TOOLS = [
   { name: 'npx', kind: 'node' },
   { name: 'jq', kind: 'binary', repo: 'jqlang/jq' },
 ];
-
-export function semverOf(value) {
-  const m = String(value || '').match(/(\d+(?:\.\d+){1,3})/);
-  return m ? m[1] : '';
-}
-
-/** Component-wise compare; missing components are zero. */
-export function cmpVersion(a, b) {
-  const pa = parts(a);
-  const pb = parts(b);
-  const width = Math.max(pa.length, pb.length);
-  for (let i = 0; i < width; i += 1) {
-    const delta = (pa[i] || 0) - (pb[i] || 0);
-    if (delta !== 0) return Math.sign(delta);
-  }
-  return 0;
-}
-
-function parts(value) {
-  return semverOf(value).split('.').map(Number);
-}
-
-export function npmLatest(pkg, runNpmImpl = runNpm) {
-  const r = runNpmImpl(['view', pkg, 'version'], { timeout: 30000 });
-  return r.status === 0 ? String(r.stdout || '').trim() : '';
-}
-
-export function pythonBin(whichImpl = which) {
-  return whichImpl('python') || whichImpl('python3') || whichImpl('py');
-}
-
-/**
- * Every external effect the probe layer can reach, resolved once.
- *
- * Spreading `deps.x || realX` through each function made every signature carry
- * its own fallback chain, which pushed six of them past the CCN 5 ceiling
- * (measured: pipLatest 9, pipProbe 9, latestFor 8, pipShowVersion 7, detect 7,
- * upgraders 6). Filling the gaps in one place keeps each probe a straight-line
- * read of `deps` and restores the complexity budget.
- *
- * The table is data rather than a chain of `||` so adding a seam costs a row,
- * not a branch: written as a chain this function alone measured CCN 15.
- *
- * Production passes nothing, so every field is the real implementation and
- * behaviour is unchanged; tests pass only the fields they want to fake.
- */
-const DEFAULT_DEPS = {
-  toolVersion,
-  pipProbe,
-  pipShowVersion,
-  pythonBin,
-  run,
-  runNpm,
-  npmLatest,
-  pipLatest,
-  githubLatest,
-  pypiLatest,
-  fetchImpl: fetch,
-  lookup: latestFor,
-  log: (msg) => console.log(msg),
-};
-
-function resolveDeps(deps = {}) {
-  const resolved = { ...DEFAULT_DEPS };
-  for (const [key, value] of Object.entries(deps)) {
-    if (value !== undefined) resolved[key] = value;
-  }
-  return resolved;
-}
-
-/**
- * 已装版本走本地元数据（毫秒级）。`pip list --outdated` 会逐个包访问 PyPI，
- * 实测在本机超过 120s，不能放在验收路径上。
- */
-export function pipShowVersion(pkg, findPython = pythonBin, spawn = run) {
-  const py = findPython();
-  if (!py) return '';
-  return versionField(spawn(py, ['-m', 'pip', 'show', pkg], { timeout: 30000 }));
-}
-
-/** The `Version:` value of a `pip show` result, or '' when it did not answer. */
-function versionField(result) {
-  if (result.status !== 0) return '';
-  const m = String(result.stdout || '').match(/^Version:\s*(\S+)/m);
-  return m ? m[1] : '';
-}
-
-/** The `pkg (1.2.3)` value of a `pip index versions` result, or null. */
-function indexVersionField(result) {
-  if (result.status !== 0) return null;
-  const m = String(result.stdout || '').match(/^[^\s()]+\s+\(([^)]+)\)/m);
-  return m ? semverOf(m[1]) : null;
-}
-
-/**
- * checkov 的 PyPI JSON 体积达数十 MB，8s 内拉不完；`pip index versions` 只回
- * 一个短响应，先走它，失败再退回 PyPI JSON。
- */
-export async function pipLatest(pkg, deps = {}) {
-  const d = resolveDeps(deps);
-  const py = d.pythonBin();
-  if (!py) return d.pypiLatest(pkg);
-  const found = indexVersionField(d.run(py, ['-m', 'pip', 'index', 'versions', pkg], { timeout: 45000 }));
-  return found ?? d.pypiLatest(pkg);
-}
-
-export async function fetchJsonVersion(url, timeoutMs, fetchImpl = fetch) {
-  try {
-    const res = await fetchImpl(url, {
-      headers: { 'user-agent': 'reinstall-xp-gate' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-export async function pypiLatest(pkg, fetchImpl = fetch) {
-  const payload = await fetchJsonVersion(`https://pypi.org/pypi/${pkg}/json`, 8000, fetchImpl);
-  return payload ? semverOf(payload.info?.version || '') : '';
-}
-
-export async function githubLatest(repo, fetchImpl = fetch) {
-  const payload = await fetchJsonVersion(`https://api.github.com/repos/${repo}/releases/latest`, 6000, fetchImpl);
-  return payload ? semverOf(payload.tag_name || '') : '';
-}
 
 /**
  * Fill the version/path of a pip-managed tool from whichever source answers.
@@ -181,6 +63,46 @@ function pipVersion(shown, probed) {
 function pipPath(shown, probedPath, pkg) {
   if (!shown) return probedPath;
   return probedPath || `python -m pip show ${pkg}`;
+}
+
+/**
+ * Every external effect the probe layer can reach, resolved once.
+ *
+ * Spreading `deps.x || realX` through each function made every signature carry
+ * its own fallback chain, which pushed six of them past the CCN 5 ceiling
+ * (measured: pipLatest 9, pipProbe 9, latestFor 8, pipShowVersion 7, detect 7,
+ * upgraders 6). Filling the gaps in one place keeps each probe a straight-line
+ * read of `deps` and restores the complexity budget.
+ *
+ * The table is data rather than a chain of `||` so adding a seam costs a row,
+ * not a branch: written as a chain this function alone measured CCN 15.
+ *
+ * Production passes nothing, so every field is the real implementation and
+ * behaviour is unchanged; tests pass only the fields they want to fake.
+ */
+
+const DEFAULT_DEPS = {
+  toolVersion,
+  pipProbe,
+  pipShowVersion,
+  pythonBin,
+  run,
+  runNpm,
+  npmLatest,
+  pipLatest,
+  githubLatest,
+  pypiLatest,
+  fetchImpl: fetch,
+  lookup: latestFor,
+  log: (msg) => console.log(msg),
+};
+
+function resolveDeps(deps = {}) {
+  const resolved = { ...DEFAULT_DEPS };
+  for (const [key, value] of Object.entries(deps)) {
+    if (value !== undefined) resolved[key] = value;
+  }
+  return resolved;
 }
 
 /**
@@ -299,3 +221,18 @@ export function upgradeTool(row, deps = {}) {
   const upgrade = UPGRADERS[row.kind];
   return upgrade ? upgrade(row, resolveDeps(deps)) : 0;
 }
+
+// Implementation moved to `version.mjs` and `probes.mjs`; re-exported so the
+// existing import sites keep working and `tools.mjs` stays the one place to ask
+// about gate tools.
+export { semverOf, cmpVersion } from './version.mjs';
+export {
+  PACKAGE_INSTALL_TIMEOUT_MS,
+  npmLatest,
+  pythonBin,
+  pipShowVersion,
+  pipLatest,
+  fetchJsonVersion,
+  pypiLatest,
+  githubLatest,
+} from './probes.mjs';
