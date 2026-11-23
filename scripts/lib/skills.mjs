@@ -1,7 +1,8 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { HOME } from './proc.mjs';
-import { copyTree, isDir, isFile, pruneBackups, sameTree } from './util.mjs';
+import { copyTree, isDir, isFile, listFiles, pruneBackups, sameTree } from './util.mjs';
 
 function safeReaddir(dir) {
   try {
@@ -20,9 +21,46 @@ export function bundledSkills(pkgDir) {
     .sort();
 }
 
+/**
+ * How a deployed copy compares to the bundled skill.
+ *
+ * `ok`      identical tree
+ * `drift`   a shipped file differs or is missing -- the copy is damaged
+ * `extra`   every shipped file matches, but the copy has files the package does
+ *           not ship
+ * `missing` nothing deployed
+ *
+ * MEASURED: ~/xp-gate/skills/sprint-flow carries its own `__tests__/`, which the
+ * npm package does not include. All 26 shipped files matched byte for byte, yet
+ * a whole-tree hash called it `drift` and `verify` reported FAIL -- the
+ * distribution was correct and the verdict was wrong. `extra` keeps that visible
+ * without claiming the copy is damaged: a stray file can still shadow real
+ * content, so it is not `ok` either.
+ */
 function copyState(src, dest) {
-  if (!isDir(dest)) return 'missing';
-  return sameTree(src, dest) ? 'ok' : 'drift';
+  if (!isDir(dest)) return { state: 'missing', extra: [] };
+  if (sameTree(src, dest)) return { state: 'ok', extra: [] };
+  const shipped = listFiles(src);
+  const local = listFiles(dest);
+  const localSet = new Set(local);
+  // A shipped file that is absent locally makes this 'drift' immediately.
+  const intact = shipped.every((rel) => localSet.has(rel) && contentHash(src, rel) === contentHash(dest, rel));
+  if (!intact) return { state: 'drift', extra: [] };
+  const shippedSet = new Set(shipped);
+  const extra = local.filter((rel) => !shippedSet.has(rel));
+  // Name the extras: "there are extra files" without saying which is not
+  // actionable, and the whole point of keeping `extra` visible is to let the
+  // reader decide whether they belong.
+  return { state: extra.length ? 'extra' : 'drift', extra };
+}
+
+/** Hash of one file inside a tree, or '' when it cannot be read. */
+function contentHash(root, rel) {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(path.join(root, rel))).digest('hex');
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -36,7 +74,8 @@ export function planSkillCopies(pkgDir, roots) {
     for (const name of names) {
       const src = path.join(pkgDir, 'skills', name);
       const dest = path.join(root.dir, name);
-      rows.push({ agent: root.agent, root: root.dir, name, src, dest, state: copyState(src, dest) });
+      const { state, extra } = copyState(src, dest);
+      rows.push({ agent: root.agent, root: root.dir, name, src, dest, state, extra });
     }
   }
   return { names, rows };
@@ -45,7 +84,7 @@ export function planSkillCopies(pkgDir, roots) {
 export function summarizeRows(rows) {
   const byAgent = new Map();
   for (const row of rows) {
-    const entry = byAgent.get(row.agent) || { total: 0, ok: 0, drift: 0, missing: 0 };
+    const entry = byAgent.get(row.agent) || { total: 0, ok: 0, drift: 0, missing: 0, extra: 0 };
     entry.total += 1;
     entry[row.state] += 1;
     byAgent.set(row.agent, entry);

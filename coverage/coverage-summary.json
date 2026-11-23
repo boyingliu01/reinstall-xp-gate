@@ -1,16 +1,16 @@
 {
   "total": {
     "lines": {
-      "pct": 92.72
+      "pct": 92.6
     },
     "branches": {
-      "pct": 92.03
+      "pct": 92.34
     },
     "functions": {
-      "pct": 90.2
+      "pct": 89.05
     },
     "statements": {
-      "pct": 92.72
+      "pct": 92.6
     }
   },
   "coverage.mjs": {
@@ -67,6 +67,20 @@
     },
     "statements": {
       "pct": 100
+    }
+  },
+  "delphi.mjs": {
+    "lines": {
+      "pct": 91.8
+    },
+    "branches": {
+      "pct": 100
+    },
+    "functions": {
+      "pct": 71.43
+    },
+    "statements": {
+      "pct": 91.8
     }
   },
   "gatecheck.mjs": {
@@ -127,16 +141,16 @@
   },
   "skills.mjs": {
     "lines": {
-      "pct": 97.56
+      "pct": 96.69
     },
     "branches": {
-      "pct": 96.43
+      "pct": 91.43
     },
     "functions": {
-      "pct": 92.31
+      "pct": 93.75
     },
     "statements": {
-      "pct": 97.56
+      "pct": 96.69
     }
   },
   "testreport.mjs": {
@@ -172,7 +186,7 @@
       "pct": 98.99
     },
     "branches": {
-      "pct": 94.83
+      "pct": 96.55
     },
     "functions": {
       "pct": 100

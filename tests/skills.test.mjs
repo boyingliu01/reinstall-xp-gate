@@ -43,6 +43,38 @@ test('planSkillCopies classifies each agent root as ok / drift / missing', (t) =
   assert.equal(byAgent.Empty, 'missing');
 });
 
+test('planSkillCopies reports extra local files separately from content drift', (t) => {
+  // Measured on the real machine: ~/xp-gate/skills/sprint-flow carried its own
+  // __tests__/ while the npm package does not ship them. All 26 shared files
+  // matched byte for byte, yet the whole skill was reported as 'drift' and
+  // `verify` failed. The distribution was correct; the verdict was not.
+  //
+  // 'extra' is not 'ok': a stray file can still shadow real content, so it stays
+  // visible. It just must not be described as a damaged copy.
+  const pkg = fakePkg(t, ['alpha']);
+  const extraRoot = tmpDir(t);
+  const deployed = deploySkill(pkg, extraRoot, 'alpha');
+  fs.mkdirSync(path.join(deployed, '__tests__'), { recursive: true });
+  fs.writeFileSync(path.join(deployed, '__tests__', 'local.test.cjs'), '// source repo only\n');
+
+  const { rows } = planSkillCopies(pkg, [{ agent: 'Source', dir: extraRoot }]);
+  assert.equal(rows[0].state, 'extra');
+  assert.deepEqual(rows[0].extra, ['__tests__/local.test.cjs']);
+});
+
+test('planSkillCopies still calls a changed shared file drift, even with extras present', (t) => {
+  // Extras must not mask real damage: an edited SKILL.md is still drift.
+  const pkg = fakePkg(t, ['alpha']);
+  const root = tmpDir(t);
+  const deployed = deploySkill(pkg, root, 'alpha');
+  fs.mkdirSync(path.join(deployed, 'logs'), { recursive: true });
+  fs.writeFileSync(path.join(deployed, 'logs', 'run.txt'), 'x\n');
+  editSkill(deployed, '# user edited the real file\n');
+
+  const { rows } = planSkillCopies(pkg, [{ agent: 'Mixed', dir: root }]);
+  assert.equal(rows[0].state, 'drift');
+});
+
 test('planSkillCopies is read-only', (t) => {
   const pkg = fakePkg(t, ['alpha']);
   const root = tmpDir(t);
@@ -60,8 +92,21 @@ test('summarizeRows tallies per-agent totals by state', () => {
     { agent: 'B', state: 'missing' },
   ]);
 
-  assert.deepEqual(summary.get('A'), { total: 2, ok: 1, drift: 1, missing: 0 });
-  assert.deepEqual(summary.get('B'), { total: 1, ok: 0, drift: 0, missing: 1 });
+  assert.deepEqual(summary.get('A'), { total: 2, ok: 1, drift: 1, missing: 0, extra: 0 });
+  assert.deepEqual(summary.get('B'), { total: 1, ok: 0, drift: 0, missing: 1, extra: 0 });
+});
+
+test('summarizeRows counts the extra state instead of producing null', (t) => {
+  // `entry[row.state] += 1` on a counter that was never initialised yields
+  // NaN/null rather than throwing, so a new state silently breaks the tally
+  // that `verify` reports on. Caught here rather than in production.
+  const rows = [
+    { agent: 'A', state: 'ok' },
+    { agent: 'A', state: 'extra' },
+    { agent: 'A', state: 'extra' },
+  ];
+  const summary = summarizeRows(rows);
+  assert.deepEqual(summary.get('A'), { total: 3, ok: 1, drift: 0, missing: 0, extra: 2 });
 });
 
 test('summarizeRows returns an empty map for no rows', () => {

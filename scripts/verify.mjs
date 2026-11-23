@@ -8,6 +8,7 @@ import { discoverSkillRoots, nativeDelphiAgents, agentInstalled } from './lib/ag
 import { planSkillCopies, summarizeRows } from './lib/skills.mjs';
 import { toolReport, cmpVersion } from './lib/tools.mjs';
 import { readJson, isDir, isFile } from './lib/util.mjs';
+import { delphiSeats, seatModel, distinctModels } from './lib/delphi.mjs';
 import { section, table, note } from './lib/report.mjs';
 
 const args = process.argv.slice(2);
@@ -97,14 +98,20 @@ if (!delphi) {
   add('delphi config', 'FAIL', `${path.join(cfgDir, '.delphi-config.json')} 不存在（purge 后未恢复？）`);
 } else {
   const channels = delphi.channels || [];
-  const pinned = delphi.pinned_models || {};
-  const seats = Object.entries(pinned);
-  const distinct = new Set(seats.map(([, v]) => String(v)));
+  // Seats come from profiles[active_profile].experts, which is the shipped
+  // shape; a legacy top-level `pinned_models` is still accepted. See
+  // lib/delphi.mjs for why reading only `pinned_models` reported "0 席" for a
+  // valid config and left every verify run permanently red.
+  const seats = delphiSeats(delphi);
+  const distinct = distinctModels(seats);
+  const where = delphi.active_profile
+    ? `profiles.${delphi.active_profile}.experts`
+    : 'pinned_models';
   if (!channels.includes('external')) add('delphi channels', 'FAIL', `channels=${JSON.stringify(channels)}，缺少 external`);
   else add('delphi channels', 'PASS', JSON.stringify(channels));
-  if (seats.length < 3) add('delphi pinned seats', 'FAIL', `pinned_models 只有 ${seats.length} 席`);
-  else if (distinct.size < 3) add('delphi pinned seats', 'FAIL', `pinned_models ${seats.length} 席但只有 ${distinct.size} 个不同模型`);
-  else add('delphi pinned seats', 'PASS', seats.map(([k, v]) => `${k}=${v}`).join(', '));
+  if (seats.length < 3) add('delphi pinned seats', 'FAIL', `只有 ${seats.length} 席（期望 3 席，取自 ${where}）`);
+  else if (distinct.size < 3) add('delphi pinned seats', 'FAIL', `${seats.length} 席但只有 ${distinct.size} 个不同模型`);
+  else add('delphi pinned seats', 'PASS', seats.map(([k, v]) => `${k}=${seatModel(v)}`).join(', '));
 }
 
 const natives = nativeDelphiAgents();
@@ -122,8 +129,16 @@ if (!pkg) {
   const { names, rows } = planSkillCopies(pkg, roots);
   const summary = summarizeRows(rows);
   const bad = [...summary.entries()].filter(([, s]) => s.drift || s.missing);
+  // `extra` is not damage: every shipped file matched, the copy simply carries
+  // files the package does not ship. ~/xp-gate/skills is a source checkout that
+  // legitimately keeps its own __tests__/, and calling that FAIL left verify
+  // permanently red on a correct install. Reported so it stays visible.
+  const extraneous = rows.filter((r) => r.state === 'extra');
   if (bad.length) {
     add('skills parity', 'FAIL', `${bad.map(([a, s]) => `${a}(drift=${s.drift},missing=${s.missing})`).join('; ')}`);
+  } else if (extraneous.length) {
+    const detail = extraneous.map((r) => `${r.agent}/${r.name}: ${r.extra.join(', ')}`).join('; ');
+    add('skills parity', 'WARN', `${names.length} skills × ${roots.length} agents 内容一致，但副本多了包内没有的文件: ${detail}`);
   } else {
     add('skills parity', 'PASS', `${names.length} skills × ${roots.length} agents 全部一致`);
   }
