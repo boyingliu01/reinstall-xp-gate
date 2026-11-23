@@ -164,17 +164,44 @@ Windows 缺陷仍在，但只在 Windows 上发作。）
 
 ## 仍未完成 / 需要决策
 
-### TODO-7 CI 三线矩阵在 WSL 下的再次确认 —— 未验证
+### ✅ TODO-7 CI 三线矩阵 —— 已验证全绿
 
-本地三平台都跑不了。需要在 CI 上确认 `['22','24','26']` 仍全绿。
-**本条不能靠本地推断。** 待推送后看 Actions。
+`a04cf45` 推送后 CI run `45140237662` 全绿：
 
-### `proc.mjs` 剩余 21.76% —— 可接受
+```
+tests (node 22)   success
+tests (node 24)   success
+tests (node 26)   success
+complexity of .mjs sources   success
+mutation gate                success
+```
+
+### `proc.mjs` 剩余 21.43% —— 可接受
 
 剩余未覆盖是 `readRegPath` / `expandRegistryPath` / `registry PATH 合并`：
 这些要读真实 Windows 注册表，`withPlatform` 也只能骗过 `platform` 判断，
 骗不过「`C:\Windows\System32\reg.exe` 在 Linux 上不存在」。要覆盖它们得再抽一层
 可注入的 `spawnSync`，收益低于成本，**建议接受现状**。
+
+### 外部 issue 状态（2026-11-23 复核）
+
+| # | 标题 | 状态 | 依据 |
+|---|---|---|---|
+| 5 | jscpd 版本恒为 `?` | **CLOSED** | WSL 下 `toolVersion` 返回 `jscpd 5.4.3`；根因是 Windows 专属的无扩展名 shim，Linux 用符号链接 |
+| 4 | OpenCode 被自激判活 | **OPEN（有意保留）** | 本机不复现（CLI 证据命中），但 `idleDays` 读目录 mtime 的机制未改；实测 `idleDays` 仅 5 天，CLI 一消失就会误判 |
+| 1 2 3 | — | CLOSED | — |
+
+**#4 为何不关**：按"不复现就关闭"处理等于掩盖。已在 issue 内附实测证据与收口建议。
+顺带修正了 issue 表述：`probeLiveness` 是短路求值，"自激"只在第二级（CLI）为假时成立。
+
+### 本轮已清理的技术债
+
+- **3 条未使用导入**已删（`hp-gate.mjs: fs`、`preflight.mjs: gitConfig`、`verify.mjs: item`），
+  逐条人工确认仅出现在 import 语句本身。
+- **10 处 GitHub Actions 可变 tag → 钉 SHA**（`checkout@v4` / `setup-node@v4` /
+  `setup-python@v5`）。注意 `checkout@v4` 与 `setup-node@v4` 当时解析到的是
+  release 分支的 tip，即"tag 指向的内容"与"实际运行的内容"并不绑定。钉后
+  `semgrep --config=auto` 从 10 findings 降到 **0**。
 
 ### TODO-4 上游归档
 
