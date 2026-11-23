@@ -37,7 +37,6 @@
  *
  * Exit 1 if any file violates a threshold.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
-import { HOME, gitConfig } from './lib/proc.mjs';
+import { HOME } from './lib/proc.mjs';
 import { makeRunDir, snapshotConfig, collectBaseline, writeBaseline, runsRoot } from './lib/baseline.mjs';
 import { section, item, table, note } from './lib/report.mjs';
 import { isFile } from './lib/util.mjs';

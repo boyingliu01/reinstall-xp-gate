@@ -6,7 +6,7 @@ import { discoverSkillRoots, nativeDelphiAgents, agentInstalled } from './lib/ag
 import { planSkillCopies, summarizeRows } from './lib/skills.mjs';
 import { toolReport, cmpVersion } from './lib/tools.mjs';
 import { readJson, isDir, isFile } from './lib/util.mjs';
-import { section, item, table, note } from './lib/report.mjs';
+import { section, table, note } from './lib/report.mjs';
 
 const args = process.argv.slice(2);
 const quick = args.includes('--quick');
