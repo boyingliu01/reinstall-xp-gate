@@ -4,6 +4,26 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [2.0.2] - 2026-11-24
+
+### Fixed
+
+- **An uninstalled agent stayed "live" because xp-gate's own writes looked like
+  the user coming back** (issue #4). `probeLiveness` falls through to a recency
+  check once the app directory and the CLI are both gone, and that check reads
+  the config directory's mtime. xp-gate itself writes `tui.json` and `skills/`
+  there, and creating either refreshes the mtime -- so the evidence of use was
+  the checker's own output, and a removed OpenCode kept receiving twelve skills
+  on every install forever.
+
+  A home holding only those two entries is now treated as residue. A home that
+  also contains something the agent or its user made still counts as live, and
+  so does an empty home: that is a fresh install with no skills yet, which is
+  the machine that most needs them.
+
+  This release exists because 2.0.1 was tagged before the fix landed; the six
+  installed copies on this machine were verified to move to it.
+
 ## [2.0.1] - 2026-11-24
 
 ### Fixed

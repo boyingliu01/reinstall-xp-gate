@@ -1,6 +1,6 @@
 ---
 name: reinstall-xp-gate
-version: 2.0.1
+version: 2.0.2
 description: >
   跨 agent 全新重装 xp-gate：快照用户配置 → 用 xp-gate 命令卸载并清理历史残留 →
   安装 npm 最新版 → 依赖工具升级到可达最新 → 逐 agent 校验 skill、插件、钩子真实生效。

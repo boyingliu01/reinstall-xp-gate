@@ -1,6 +1,6 @@
 {
   "name": "reinstall-xp-gate",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "description": "Agent skill: clean cross-agent reinstall of xp-gate with real verification of skills, plugins and hooks.",
   "type": "module",
