@@ -1,16 +1,16 @@
 {
   "total": {
     "lines": {
-      "pct": 90.66
+      "pct": 92.6
     },
     "branches": {
-      "pct": 92.61
+      "pct": 92.03
     },
     "functions": {
-      "pct": 86.61
+      "pct": 90.2
     },
     "statements": {
-      "pct": 90.66
+      "pct": 92.6
     }
   },
   "coverage.mjs": {
@@ -18,7 +18,7 @@
       "pct": 67.86
     },
     "branches": {
-      "pct": 87.5
+      "pct": 83.33
     },
     "functions": {
       "pct": 70
@@ -32,7 +32,7 @@
       "pct": 81.51
     },
     "branches": {
-      "pct": 80
+      "pct": 80.65
     },
     "functions": {
       "pct": 61.54
@@ -46,7 +46,7 @@
       "pct": 80.2
     },
     "branches": {
-      "pct": 82.61
+      "pct": 83.33
     },
     "functions": {
       "pct": 81.82
@@ -60,7 +60,7 @@
       "pct": 100
     },
     "branches": {
-      "pct": 96.3
+      "pct": 96.43
     },
     "functions": {
       "pct": 100
@@ -71,30 +71,30 @@
   },
   "gatecheck.mjs": {
     "lines": {
-      "pct": 70.34
+      "pct": 94.14
     },
     "branches": {
-      "pct": 100
+      "pct": 81.25
     },
     "functions": {
-      "pct": 40
+      "pct": 85.71
     },
     "statements": {
-      "pct": 70.34
+      "pct": 94.14
     }
   },
   "proc.mjs": {
     "lines": {
-      "pct": 75.23
+      "pct": 78.57
     },
     "branches": {
-      "pct": 66.67
+      "pct": 79.63
     },
     "functions": {
-      "pct": 70.37
+      "pct": 75
     },
     "statements": {
-      "pct": 75.23
+      "pct": 78.57
     }
   },
   "report.mjs": {
@@ -116,7 +116,7 @@
       "pct": 97.58
     },
     "branches": {
-      "pct": 97.22
+      "pct": 97.3
     },
     "functions": {
       "pct": 100
@@ -130,7 +130,7 @@
       "pct": 97.56
     },
     "branches": {
-      "pct": 96.3
+      "pct": 96.43
     },
     "functions": {
       "pct": 92.31
@@ -158,7 +158,7 @@
       "pct": 100
     },
     "branches": {
-      "pct": 95.15
+      "pct": 95.19
     },
     "functions": {
       "pct": 96.43
@@ -172,7 +172,7 @@
       "pct": 98.99
     },
     "branches": {
-      "pct": 94.74
+      "pct": 94.83
     },
     "functions": {
       "pct": 100

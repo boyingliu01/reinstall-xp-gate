@@ -1,222 +1,226 @@
-# TODO — 迁移 WSL 前遗留事项
+# TODO — WSL 迁移后状态
 
-生成时间：2026-11-22
-生成依据：本机实测（Windows 11 + Node 26.13.1 + xp-gate 0.38.82），非凭记忆。
-工作区状态：`main` 与 `origin/main` 同步于 `0d5d4c1`，无未提交改动。
+最近更新：2026-11-23（WSL2 + Ubuntu 22.04 环境首次全量验证）
+上一版：2026-11-22（Windows 11 环境遗留事项）
 
-读完这份文档就能在 WSL 里接着干活。每条都标了「是否已验证」——**没验证的不要当成结论**。
-
----
-
-## 当前基线（迁移前最后一测）
-
-| 指标 | 值 | 门槛 |
-|---|---|---|
-| 测试数 | 196 / 196 通过 | — |
-| 项目行覆盖 | 90.66% | 80% |
-| 最差文件 | `coverage.mjs` 67.86% | 80% |
-| 函数复杂度 | 707 个全部 ≤ CCN 5 | 5 |
-| 变异测试 | 19 / 19 全捕获 | 全捕获 |
-| 重复代码 | 0 clones | — |
-| CI | Node 22 / 24 / 26 三线全绿 | — |
-
-各文件覆盖率（实测）：
-
-```
-agents.mjs     81.51%   gatecheck.mjs  70.34%   residue.mjs    97.58%
-baseline.mjs   80.20%   proc.mjs       75.23%   skills.mjs     97.56%
-ccn.mjs       100.00%   report.mjs    100.00%   testreport.mjs 100.00%
-tools.mjs     100.00%   util.mjs       98.99%   verdict.mjs    100.00%
-```
+读完这份文档就能接着干活。每条都标了「是否已验证」——**没验证的不要当成结论**。
 
 ---
 
-## TODO-1 修 `proc.mjs` 的 Windows shim 版本探测（**已验证，迁移后可关闭**）
+## 迁移后基线（2026-11-23 实测，WSL2 + Node 26.13.1 + xp-gate 0.38.125）
 
-### 现象
+| 指标 | 迁移前（Windows） | 迁移后（WSL 首次） | 本次修复后 | 门槛 |
+|---|---|---|---|---|
+| 测试数 | 196 | 196 | **215** | — |
+| 项目行覆盖 | 90.66% | 89.91% | **92.60%** | 80% |
+| `gatecheck.mjs` | 70.34% | 70.34% | **94.14%** | — |
+| `proc.mjs` | 75.23% | **64.68%** ↓ | **78.57%** | — |
+| 最差文件 | `coverage.mjs` 67.86% | 同 | 同 | 80% |
+| 函数复杂度 | 707 个全部 ≤ CCN 5 | 686 全合规 | **735 全合规** | 5 |
+| 变异测试 | 19/19 | 19/19 | 19/19 | 全捕获 |
+| 重复代码 | 0 clones | 0 clones | 0 clones | — |
+| `xp-gate check . --all` | — | 10 passed / 9 skipped | 10 passed / 9 skipped | — |
+| Gate 4 违规 | 78 条（58 INFO + 14 WARNING 等） | 21 WARNING | 21 WARNING（无新增） | — |
 
-`--upgrade-tools` 把 jscpd 报成 `outdated`，且版本列为空。升级后仍报，等于一条永久噪声告警。
-
-### 根因（已实测到具体行，非推测）
-
-链条四步，每步都验证过：
-
-1. `where jscpd` 返回两行，**首行是无扩展名的 sh 脚本**：
-   ```
-   C:\Users\think\AppData\Roaming\npm\jscpd        ← 无扩展名，sh 脚本
-   C:\Users\think\AppData\Roaming\npm\jscpd.cmd
-   ```
-2. `proc.mjs:184 firstExisting()` 判定首行是文件，直接返回它。
-3. `proc.mjs:104 isWindowsShim()` 只认 `/\.(cmd|bat)$/i`，**不认无扩展名的 sh 脚本**，于是 `probe()` 走 `run()` 而非 comspec 分支。
-4. `spawnSync` 执行无扩展名脚本返回 `ENOENT` → `versionLine()` 拿不到输出 → `version` 为空。
-
-实测对照（Node 直接 spawn，`shell:false`）：
-
-```
-status= null   error= ENOENT   stdout= undefined
-```
-
-而同一路径在 bash 里执行正常打印 `jscpd 5.4.3`——**装了但 Node 调不到**。
-
-### 为什么这条值得修
-
-- `npmLatest('jscpd')` 返回值正常（`5.4.3`），`semverOf` 也正常，**问题只在"已装版本"这一侧**，范围清晰、好修。
-- 未覆盖行 `proc.mjs:202-218` 正是 `versionLine` / `toolVersion`——修它顺带能把 `proc.mjs` 的 75.23% 拉上去。
-
-### 注意：这与 README 记载的不是同一处
-
-`README.md:78-85` 已经详细记录了 **xp-gate 上游 `lib/gate-runner.js`** 的同类问题（Gate 2 报 `spawnSync npx ENOENT`，被归类为 `UNMEASURABLE`）。**那是上游的**，已接受为技术债。
-
-本条是**本项目 `proc.mjs` 自己的** `versionLine`/`isWindowsShim`，两份文档里都没记。别把两者混为一谈。
-
-### WSL 下的预期
-
-Linux 没有 `.cmd` shim，`which` 返回真实可执行文件，**这条大概率自然消失**。迁移后第一件事就是跑：
-
-```bash
-node -e 'import("./scripts/lib/tools.mjs").then(async m=>{
-  const rows = await m.toolReport({lookup: async()=>""});
-  console.log(rows.filter(r=>r.name==="jscpd"));
-})'
-```
-
-`version` 非空即说明已自然修复 → 关闭本条。若仍为空，才是需要写的代码。
+**注意 `proc.mjs` 那行**：迁移后覆盖率从 75.23% **掉到** 64.68%，这不是环境波动，是确定的回归——
+Windows 分支在 Linux 上根本走不到。这正是 TODO-3 要解决的问题，见下文。
 
 ---
 
-## TODO-2 补 `gatecheck.mjs` 覆盖率（70.34%，项目最差的可测文件）
+## 本次已完成
 
-未覆盖行：`96-98 100-107 110-112 120-126 142-143 151-158 169-175 201-210 219-227 230-242 252-264 288-290`，函数覆盖仅 40%。
+### ✅ 环境搭建（WSL2）
 
-`gatecheck.mjs` 是决定「门禁到底有没有拦住」的模块，**它的正确性直接决定这个项目有没有价值**，却比 `tools.mjs`（现 100%）低得多。上一轮 `tools.mjs` 用的注入手法可以直接复用。
+- Node 26.13.1（nvm，`~/.npm-global/bin/node` 软链）、npm 11.20.0。
+- xp-gate 0.38.125，Linux native 路径 `/home/bull/.npm-global/bin/xp-gate`。
+- 所有门禁工具均在 Linux 侧解析（逐一 `which -a` 确认首条不是 `/mnt/c`）：
+  `jscpd` `lizard` `checkov` `hadolint` `gitleaks` `semgrep` `jq`。
+- 仓库在 Linux 原生路径，`git config core.autocrlf input`，无 CRLF 文件。
 
-注意 `coverage.mjs` 67.86% 是**统计脚本自身**，覆盖率低属正常，不建议为它写测试。
+**修复了两个真实的 Windows→WSL 残留问题：**
 
----
+1. `~/.zshrc:107` 硬编码了约 62 条 `/mnt/c` 的 Windows PATH 快照。`.bashrc` / `.profile`
+   已有 `__xp_gate_strip_mnt` 守卫，`.zshrc` 漏了。已替换为同样的守卫逻辑
+   （`path=(${path:#/mnt/*})`）。现新开 zsh 的 `PATH` 中 `/mnt` 条目为 0。
+   *症状本该是*：Windows shim 能被解析但执行失败（rc=126），门禁 probe 假通过。
 
-## TODO-3 补 `proc.mjs` 的跨平台分支（75.23%，分支 66.67%）
+2. **semgrep 完全不可用**（不是慢，是坏的），两个独立故障叠加：
+   - ocaml 主程序 `execvp pysemgrep` 找不到 —— `pysemgrep` 在 `~/.local/bin`，
+     而 ocaml 靠 PATH 查找。
+   - `pysemgrep` 加载到系统旧版 `zope.interface` 崩溃：
+     `InvalidInterface: Concrete attribute, __firstlineno__`。
+     根因是 `/usr/lib/python3/dist-packages/zope.interface-5.4.0-nspkg.pth` 在
+     `site` 启动时把 3.10 时代的 `zope` 命名空间抢先注册进 `sys.modules`，
+     用户 site 里的新版永远抢不过来。
+   - 修法：`~/.local/bin/pysemgrep` 改成 `#!/usr/bin/python3.14 -S`，跳过该 `.pth`，
+     再显式把 `zope` 命名空间指向用户 site（系统 dist-packages 保留作后备，
+     因为 `idna` 等只在系统侧有）。**未改动任何系统文件。**
+   - 现 `semgrep --version` → `1.186.0`。
 
-未覆盖行：`92-102 104-106 127-128 157-163 166-174 184-188 194 197 202-212 215-218`。
+### ✅ TODO-1 `proc.mjs` 的 shim 版本探测 —— 自然修复，已关闭
 
-全是 Windows 分支（`isWindowsShim`、comspec 拼装、`where` 解析、`versionLine`）。在 Windows 上测不完是因为 `process.platform` 是硬绑定，注入不了。
-
-**WSL 迁移后这条会变得更难测**（Linux 上这些分支根本走不到），所以如果要保住这块覆盖，需要在迁移前考虑：是把平台判断抽成参数，还是接受 Linux 侧覆盖率下降。**这是个取舍，不是纯技术问题。**
-
----
-
-## TODO-4 核实 Gate 12 的 EOF 换行误报（**未验证，只有观察记录**）
-
-### 观察到什么
-
-两次提交（`763d02f`、`0d5d4c1`）时，pre-commit 的 Gate 12 都报：
-
-```
-⚠️ Missing EOF newline in:
-   - tests/tools-leaf.test.mjs
-   - scripts/lib/tools.mjs
-```
-
-### 我核实的部分
-
-逐字节比对，**工作区与 commit blob 的末字节都是 `0x0a`**：
+WSL 下 `which jscpd` 返回真实可执行文件：
 
 ```
-工作区末字节: 0x0a
-commit末字节: 0x0a
+{"path":"/home/bull/.npm-global/bin/jscpd","version":"jscpd 5.4.3"}
 ```
 
-即文件本身没有问题，告警内容与实际不符。
+`version` 非空，符合迁移前的预期（Linux 没有 `.cmd` shim）。无需改代码。
 
-### 我没核实的那部分
+### 🔴 TODO-4 Gate 12 EOF 换行误报 —— **已定位根因，是上游缺陷，未关闭**
 
-我**没有**定位 Gate 12 的检查器读的是哪个快照（暂存区 vs 工作区 vs HEAD），也没有复现出最小的误报条件——复现需要把工作区搞脏，当时没做。
+迁移前记录的误报在 0.38.125 上**只修了一半**。旧实现（`$(...)` 捕获内容、命令替换吃掉
+结尾换行）确实修了，但还剩一个独立的缺陷：**只在含非 ASCII 字符的文件上发作**。
 
-所以这条现在的准确表述是：**"两次观察到告警与文件实际内容不符"**，不是一个已定性的缺陷。要去 xp-gate 提 issue，得先补上最小复现。
+#### 根因（已实测到具体机制）
 
-### 为什么可能值得追
+`~/.config/xp-gate/hooks/lib/gate-12-blob-scan.awk` 用 `git cat-file --batch` 报告的
+**字节数** 来切分 blob，却用 `length($0)` 计算每行长度：
 
-Gate 12 是 WARN 不阻塞，但它连续误报两轮同一个问题。如果检查器确实在读旧快照，那是 xp-gate 的缺陷，值得记一条 issue。
-
----
-
-## TODO-5 决定 `jscpd` / Gate 2 在上游修复前怎么办（**产品决策，非代码**）
-
-`README.md:78-85` 已确认：jscpd ≥ 5 + Windows 下，Gate 2 **永远**是 `UNMEASURABLE`，重复代码信号缺失。
-
-迁移 WSL 后大概率自然恢复（Linux 无 `.cmd` 问题）。但需要确认：
-
-- WSL 下 Gate 2 是否真的能跑通？
-- 如果跑通了，本项目 `0 clones` 的结论能否在 CI 上持续验证（CI 是 Linux，应该可以）？
-
-**这条不用写代码，迁移后跑一次 `xp-gate check . --all` 看 Gate 2 输出即可。**
-
----
-
-## TODO-6 确认 WSL 环境下 Node 版本策略仍然成立
-
-上一轮已决定「只用一个 Node 26，不上版本管理器」，CI 矩阵是 `['22','24','26']`。
-
-迁移后需要确认：
-
-- WSL 里装的是 **Node 26 LTS**（不是发版号更高的奇数版）
-- `npm test` 在 Linux 上 196/196 通过（有跨平台路径假设吗？`tests/` 里可能藏着 Windows 假设）
-- pre-commit hook 在 WSL 里能正常跑（Git Bash → Linux 换行符的差异，`\r\n` vs `\n`）
-
-**风险点**：`parseLizardCsv handles CRLF output` 这类测试说明代码里处理过换行差异，但反向（Linux 上遇到的都是 `\n`）是否测过，不确定。
-
----
-
-## TODO-7 迁移后重跑全部门禁，与本文档基线对比
-
-```bash
-npm test
-node scripts/coverage.mjs
-node scripts/hp-gate.mjs
-node scripts/mutation.mjs
-npx --no-install jscpd --min-lines 5 --min-tokens 50 tests/*.mjs scripts/lib/*.mjs
-xp-gate check . --all
+```awk
+n = length(body) + 1     # 在 UTF-8 locale 下这是「字符数」，不是字节数
 ```
 
-对照「当前基线」那张表。**任何一项数字下降，先怀疑环境差异，不要直接当回归。**（本机 CPU 长期 90-100%，覆盖率和耗时都不稳；覆盖率本身是确定性的，降了就是真降了。）
+当 `LANG=C.UTF-8`（本机默认）时，`length()` 返回字符数；含中文的行字符数 < 字节数，
+于是 `remaining` 永远减不到 0，`ends_nl` 被置 0 → 误报 `NOEOF`。
 
----
+实测同一文件：
 
-## 环境重建速查
-
-```bash
-# 依赖：零第三方依赖，不需要 npm install
-node --version    # 期望 v26.x
-
-# 门禁工具（--upgrade-tools 会自动装一部分）
-jscpd  lizard  checkov  hadolint  gitleaks  semgrep  npx  jq
-
-# xp-gate 本体
-npm i -g xp-gate        # 本机版本 0.38.82
-
-# 全量检查
-xp-gate check . --all
+```
+LC_ALL=C awk '{...}'  -> 长度 14 / 9 / 12   （正确，字节）
+     awk '{...}'      -> 长度  6 / 3 /  4   （字符）
 ```
 
-已知的项目约定：
+#### 最小复现（已建，隔离环境）
 
-- **`coverage/` 必须跟踪**，不要加进 `.gitignore`。`.gitignore` 里写了原因：Gate 5 从 **commit** 读 `coverage/coverage-summary.json`（`git cat-file -e :coverage/coverage-summary.json`），忽略它会让地板线无法测量、每个 commit 都被 `not found` 拦住。跑完 `npm run coverage` 后要连同代码一起提交。
-- 项目零依赖，**不要引入测试框架**（`node:test` 够用）。
-- Git 换行：Windows 侧是 `core.autocrlf` 相关，迁到 WSL 后建议 `git config core.autocrlf input`。
+```
+ascii.md   结尾 0a  -> 默认 locale 下 不报 ✅
+chinese.md 结尾 0a  -> 默认 locale 下 报 NOEOF ❌（误报）
+两者在 LC_ALL=C 下都不报 ✅
+```
+
+**对照组仍有效**：把中文文件真的改成不带结尾换行，`LC_ALL=C` 下依然正确报 `NOEOF`。
+所以这是误报的修复空间，不是检测能力问题。
+
+#### 这也解释了迁移前「偶发」的观感
+
+`tests/tools-leaf.test.mjs` / `scripts/lib/tools.mjs` 是纯 ASCII，当时没稳定复现；
+一旦提交带中文的文档（如本文件）就必然中招。
+
+#### 影响与现状
+
+- Gate 12 是 WARN 不阻塞，代价是**每个含中文的提交都有一条噪声告警**。
+- 本项目 `TODO.md` / `README.md` 都是中文，所以这条会持续出现。
+- 规避：`LC_ALL=C git commit ...`（不改任何文件，已验证可消除误报）。
+
+#### 待办
+
+- [ ] 给 xp-gate 提 issue（**用户自己提，不提 PR**）：awk 扫描器需 `LC_ALL=C`
+      或在 `BEGIN` 里设置字节语义。
+- [ ] 决定是否长期用 `LC_ALL=C git commit` 规避。这是**使用决策**，未擅自更改全局配置。
+
+### ✅ TODO-5 Gate 2 / jscpd —— WSL 下可测
+
+`xp-gate check . --all` 的 Gate 2 输出 `Found 0 clones`，不再 `UNMEASURABLE`。
+Linux 上不存在 `.cmd` shim / `npx ENOENT` 问题。（上游 `lib/gate-runner.js` 的
+Windows 缺陷仍在，但只在 Windows 上发作。）
+
+### ✅ TODO-6 Node 版本策略 —— 成立
+
+- Node **26.13.1**（非奇数版），符合「只用一个 Node 26，不上版本管理器」的既有决定。
+- `npm test` 在 Linux 上 **215/215 通过**（迁移时 196/196 已通过）。
+- 无 CRLF 文件；`parseLizardCsv handles CRLF output` 仍有效（它测的是解析器对 CRLF
+  的容忍，与平台无关）。
+- pre-commit hook 在 WSL 下正常执行（上表 Gate 12 即为实证）。
+
+### ✅ TODO-3 平台判断抽成可注入参数（用户选定方案）
+
+`proc.mjs` 新增 `withPlatform(platform, fn)`：在调用期间临时遮蔽
+`process.platform`，`finally` 中还原原 descriptor（回调抛异常也不会泄漏）。
+
+顺带把两处硬编码抽成可测函数：
+
+- `firstExisting` / `isWindowsShim` 改为导出。
+- `parseWhichOutput(stdout, exists)` —— `where` 输出解析，含 CRLF 容忍与
+  「跳过不可执行的首行」逻辑（正是迁移前 jscpd 那条 bug 的机制）。
+- `probe` 的 comspec 与 `spawnOpts` 现在尊重 `opts.env`（此前被强制覆盖，
+  导致 comspec 分支无法注入测试）。
+
+覆盖率：`proc.mjs` 64.68% → **78.57%**。**Windows 分支现在在 Linux 上也能测。**
+
+### ✅ TODO-2 补 `gatecheck.mjs` 覆盖率
+
+70.34% → **94.14%**（函数覆盖 40% → 85.71%）。
+
+新增的是执行路径测试（`runCase` / `measure` / `erroredCase` / `evaluateCase` /
+`auditGates`）：用不存在的 gate id 驱动，spawn 路径真实、断言只针对本模块的记账逻辑。
+其中一条专门守住临时仓库清理——`runCase` 抛异常时若 `finally` 失效，`/tmp` 会被
+`xgr-gate-*` 塞满。
+
+> 记账部分（`summarize`）**原本就有测试**，见 `tests/gatecheck-audit.test.mjs`。
+> 第一轮我重复写了一组，已回滚——测试通过即说明在测已有行为。
 
 ---
 
-## 已完成（迁移后不必重做）
+## 仍未完成 / 需要决策
 
-- [x] 克隆并配好本仓库开发环境
-- [x] 本机与 CI 升级到 Node 26 LTS
-- [x] 给 xp-gate 提缺陷 issue，去重后重新打开 #732、#858（已加评论并 reopen）
-- [x] 全项目技术债盘点（Gate 4 隐藏 78 条违规：58 INFO 魔数 + 14 WARNING 缺错误处理 + 3 多导出 + 3 未用导入，0 ERROR）
-- [x] `tools.mjs` 覆盖率 52.26% → 100%，函数覆盖 25% → 96.43%
-- [x] 项目总覆盖 86.82% → 90.66%
-- [x] 测试 133 → 196，变异 19/19，复杂度 707 函数全合规，重复代码 0
-- [x] 两个 commit 推送 `origin/main`（`763d02f`、`0d5d4c1`），CI 三线全绿
+### TODO-7 CI 三线矩阵在 WSL 下的再次确认 —— 未验证
+
+本地三平台都跑不了。需要在 CI 上确认 `['22','24','26']` 仍全绿。
+**本条不能靠本地推断。** 待推送后看 Actions。
+
+### `proc.mjs` 剩余 21.76% —— 可接受
+
+剩余未覆盖是 `readRegPath` / `expandRegistryPath` / `registry PATH 合并`：
+这些要读真实 Windows 注册表，`withPlatform` 也只能骗过 `platform` 判断，
+骗不过「`C:\Windows\System32\reg.exe` 在 Linux 上不存在」。要覆盖它们得再抽一层
+可注入的 `spawnSync`，收益低于成本，**建议接受现状**。
+
+### TODO-4 上游归档
+
+**不要**按「已修复」留言——它在 0.38.125 上仍可复现（见上文根因与最小复现）。
+这是一条**新的、可提交的缺陷报告**：`gate-12-blob-scan.awk` 混用字节数与字符数。
+按既有规则：用户自己提 issue，不提 PR。
 
 ### 用户已明确不做的事
 
 - **不向 xp-gate 提 PR**：用户自己在 XPGATE 仓库里修。只提 issue / 加评论 / 重开 issue。
-- Gate 4 的 58 条魔数 INFO 违规：**判定为噪声，不修**。要修的是那 14 条缺错误处理的。
+- Gate 4 的魔数 INFO 违规：**判定为噪声，不修**。
+
+---
+
+## 环境速查（WSL2）
+
+```bash
+# 依赖：零第三方依赖，不需要 npm install
+node --version    # v26.13.1
+
+# 门禁工具
+which -a jscpd lizard checkov hadolint gitleaks semgrep jq   # 首条必须是 Linux 路径
+
+# xp-gate 本体
+xp-gate --version # 0.38.125
+
+# 全量检查
+npm test && npm run coverage && npm run hp-gate && npm run mutation
+npx --no-install jscpd --min-lines 5 --min-tokens 50 tests/*.mjs scripts/lib/*.mjs
+xp-gate check . --all
+```
+
+已知限制（实测，非推测）：
+
+- `semgrep` 依赖 `~/.local/bin/pysemgrep` 这个定制 wrapper **必须在 PATH 上**，
+  因为 ocaml 主程序靠 `execvp` 找它。若把 `~/.local/bin` 移出 PATH，semgrep 立刻
+  回到 `execvp pysemgrep` 报错。
+- `xp-gate check . --all` 里 Gate 0/1/5/9/11/12/12b/12c/13 无法从 CLI 调用
+  （`git commit` 时才跑）。**别把「CLI 显示 skipped」当成「门禁通过了」。**
+- Gate 3 / Gate 10 的扩展名正则不含 `mjs`/`cjs`（上游缺陷），本项目纯 ESM，
+  所以 Gate 3 在 xp-gate 眼里整棵树不存在 —— 复杂度由 `npm run hp-gate` 独立兜底。
+
+已知的项目约定：
+
+- **`coverage/` 必须跟踪**，不要加进 `.gitignore`。Gate 5 从 **commit** 读
+  `coverage/coverage-summary.json`，忽略它会让地板线无法测量、每个 commit 都被
+  `not found` 拦住。跑完 `npm run coverage` 后要连同代码一起提交。
+- 项目零依赖，**不要引入测试框架**（`node:test` 够用）。
+- `git config core.autocrlf input` 已设置，保持。

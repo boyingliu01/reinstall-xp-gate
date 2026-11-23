@@ -18,6 +18,30 @@ const XP_GATE_PKG = 'xp-gate';
 let cachedPath = null;
 let cachedPkgDir;
 
+/**
+ * Run `fn` as if the process were running on `platform`.
+ *
+ * WHY THIS EXISTS: `process.platform` is frozen at startup, so every Windows
+ * branch below (registry PATH, the `where` parser, comspec routing, PATHEXT
+ * lookup) was unreachable from Linux and untestable from Windows. The dev box
+ * moved to WSL, which would have quietly deleted the only coverage those
+ * branches ever had -- the exact way platform code rots.
+ *
+ * Shadowing the property for the duration of the call keeps the branch decision
+ * an argument without changing any call site, and the original descriptor is
+ * restored in `finally` so a throwing callback cannot leak a fake platform into
+ * the rest of the process.
+ */
+export function withPlatform(platform, fn) {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+  try {
+    return fn();
+  } finally {
+    Object.defineProperty(process, 'platform', original);
+  }
+}
+
 /** The raw `Path` value of one registry environment key, or ''. */
 function readRegPath(key) {
   if (!isFile(WIN_REG)) return '';
@@ -76,7 +100,7 @@ function spawnOpts(opts, defaultTimeout) {
     stdio: opts.stdio,
     encoding: opts.stdio ? undefined : 'utf8',
     maxBuffer: 32 * 1024 * 1024,
-    env: envWithPath(),
+    env: opts.env ?? envWithPath(),
   };
 }
 
@@ -90,18 +114,23 @@ export function run(cmd, args, opts = {}) {
  */
 export function probe(cmdPath, args, opts = {}) {
   if (!isWindowsShim(cmdPath)) return run(cmdPath, args, opts);
-  const comspec = process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
+  const env = opts.env ?? envWithPath();
   const line = `"${cmdPath}" ${args.map((a) => `"${a}"`).join(' ')}`;
-  return spawnSync(comspec, ['/d', '/s', '/c', `"${line}"`], {
+  return spawnSync(comspecOf(env), ['/d', '/s', '/c', `"${line}"`], {
     windowsVerbatimArguments: true,
     timeout: opts.timeout ?? 15000,
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
-    env: envWithPath(),
+    env,
   });
 }
 
-function isWindowsShim(cmdPath) {
+/** The interpreter that runs .cmd shims, honouring an explicit ComSpec. */
+function comspecOf(env) {
+  return env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
+}
+
+export function isWindowsShim(cmdPath) {
   return process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmdPath);
 }
 
@@ -181,18 +210,37 @@ export function gitConfig(key) {
 /** where 会返回 npm 的无扩展名 shim（实际可执行的是同名 .cmd/.exe）。 */
 const WIN_EXTS = ['.exe', '.cmd', '.bat', '.com'];
 
-function firstExisting(base) {
+/**
+ * Resolve a bare path the way Windows would: try it, then each PATHEXT entry.
+ *
+ * Exported so the PATHEXT logic is testable from Linux via `withPlatform`; on
+ * non-Windows a missing bare path is simply absent, which is the honest answer.
+ */
+export function firstExisting(base) {
   if (isFile(base)) return base;
   if (process.platform !== 'win32') return '';
   return WIN_EXTS.map((ext) => base + ext).find(isFile) || '';
+}
+
+/**
+ * Pick the first runnable path out of `where <tool>` output.
+ *
+ * `where` prints every match on its own CRLF-terminated line, and on Windows the
+ * first one is often npm's extensionless shell shim, which spawnSync cannot
+ * execute (ENOENT). So each line is resolved through `firstExisting` and the
+ * first that resolves wins. `exists` is injectable so the fall-through is
+ * testable from Linux.
+ */
+export function parseWhichOutput(stdout, exists = firstExisting) {
+  const lines = String(stdout || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  return lines.map(exists).find(Boolean) || '';
 }
 
 export function which(tool) {
   if (process.platform === 'win32') {
     const r = run(WIN_WHERE, [tool], { timeout: 10000 });
     if (r.status !== 0) return '';
-    const lines = String(r.stdout).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    return lines.map(firstExisting).find(Boolean) || '';
+    return parseWhichOutput(r.stdout);
   }
   const r = run('which', [tool], { timeout: 10000 });
   return r.status === 0 ? String(r.stdout).trim() : '';

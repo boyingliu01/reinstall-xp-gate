@@ -81,3 +81,77 @@ test('the gate ids under test are unique', () => {
   const ids = CASES.map((c) => c.id);
   assert.equal(new Set(ids).size, ids.length);
 });
+
+// ---------------------------------------------------------------------------
+// Execution paths (TODO-2).
+//
+// The bookkeeping above was covered; what was not is the code that actually
+// runs: tmpRepo/stageAll build the fixture, gateRun invokes the real CLI, and
+// runCase/measure/erroredCase/evaluateCase turn two verdicts into a finding.
+// These are exercised with a gate id that no fixture can satisfy, so the
+// spawn path is real while the assertions stay about this module's bookkeeping.
+// ---------------------------------------------------------------------------
+
+import os from 'node:os';
+import fs from 'node:fs';
+
+import { runCase, auditGates } from '../scripts/lib/gatecheck.mjs';
+
+/** A case whose plant() writes a marker file and whose id cannot match a gate. */
+function probeCase(overrides = {}) {
+  return {
+    id: 404,
+    name: 'probe case',
+    plant: (dir) => fs.writeFileSync(`${dir}/planted.txt`, 'x'),
+    expect: 'blocked',
+    ...overrides,
+  };
+}
+
+test('runCase returns a well-formed result even when the gate id does not exist', () => {
+  // This is the path that must never throw: a case that throws mid-flight has
+  // already created two temp repos, and the finally-block cleanup is the only
+  // thing keeping them from piling up in /tmp.
+  const r = runCase(probeCase());
+  assert.equal(r.id, 404);
+  assert.equal(typeof r.dirtyVerdict, 'string');
+  assert.equal(r.error, undefined, `runCase must not leak an error: ${r.error}`);
+});
+
+test('runCase leaves no temporary repo behind', () => {
+  const before = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('xgr-gate-')).length;
+  runCase(probeCase());
+  const after = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('xgr-gate-')).length;
+  assert.equal(after, before, 'every fixture repo must be removed, including on the dirty run');
+});
+
+test('runCase records a throwing plant() as unmeasurable instead of propagating', () => {
+  // A broken case must degrade to "could not measure", never crash the audit.
+  const r = runCase(probeCase({ plant: () => { throw new Error('plant exploded'); } }));
+  assert.equal(r.measurementValid, false);
+  assert.equal(r.ok, false);
+  assert.equal(r.dirtyVerdict, 'unknown');
+  assert.match(r.error, /plant exploded/);
+});
+
+test('runCase carries knownGap through to the result', () => {
+  // summarize() filters on this field, so losing it here would silently turn a
+  // documented upstream gap into a permanent audit failure.
+  const r = runCase(probeCase({ plant: () => {} , knownGap: true }));
+  assert.equal(r.knownGap, true);
+});
+
+test('runCase without a control reports the clean side as skipped, not as unknown', () => {
+  // control:false means "do not run the clean tree". Reporting 'unknown' would
+  // read as "we ran it and could not parse it", which is a different claim.
+  const r = runCase(probeCase({ plant: () => {} }), { control: false });
+  assert.equal(r.cleanVerdict, 'skipped');
+  assert.equal(r.measurementValid, true, 'with no control there is nothing that can invalidate the measurement');
+});
+
+test('auditGates runs every supplied case and summarises the results', async () => {
+  const { cases, summary } = await auditGates({ cases: [probeCase(), probeCase({ id: 405 })] });
+  assert.equal(cases.length, 2);
+  assert.equal(summary.total, 2);
+  assert.deepEqual(cases.map((c) => c.id), [404, 405]);
+});
