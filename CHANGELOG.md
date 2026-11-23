@@ -4,6 +4,51 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-11-24
+
+### Fixed
+
+- **The mutation gate reported a clean run while silently skipping eight of its
+  own checks.** Refactoring `util.mjs` into `fs-tree.mjs`, and moving
+  `cmpVersion` to `version.mjs`, left eight mutations anchored to text that had
+  moved. Each printed `[skip] anchor not found`, and the script still ended with
+  "every mutated defect was caught" and exit code 0 -- so eight of nineteen
+  property checks disappeared and the gate looked healthier than before. Since
+  this project exists to catch exactly "the gate passed but measured nothing",
+  that was the worst possible failure mode for it to have.
+
+  Fixed at both ends: the table moved to `scripts/lib/mutations.mjs` so it can
+  be imported (the mutator has top-level side effects and cannot be), and
+  `tests/mutation-anchors.test.mjs` now fails when an anchor or its target file
+  is gone. A skipped mutation also exits 1 and no longer prints the all-clear.
+  Verified by planting a bogus anchor and watching the run fail.
+
+- **`pipLatest` exceeded the CCN ceiling while being moved.** Spelling its
+  injectable defaults as `deps.x || realX` cost three branches and reached CCN 7
+  against a limit of 5; they are a lookup table now.
+
+### Changed
+
+- **Four modules were split by responsibility**, which cleared Gate 4's last
+  four `many-exports` findings (4 -> 0):
+  `proc.mjs` -> `platform.mjs` / `spawn.mjs` / `xp-cli.mjs`;
+  `util.mjs` -> `fs-tree.mjs` / `json-file.mjs` / `backups.mjs`;
+  `tools.mjs` -> `version.mjs` / `probes.mjs`;
+  `agents.mjs` -> `agent-paths.mjs`.
+
+  The original four remain the import surface and re-export everything, so no
+  import site changed and the public API is byte-for-byte the same. That is
+  pinned by `tests/proc-contract.test.mjs` rather than left to review.
+
+### Documentation
+
+- Corrected the quality overview's Gate 3 claim. It said Gate 3 cannot see this
+  repo because `LIZARD_EXTENSIONS` lacks `mjs`/`cjs`; a control experiment shows
+  the opposite -- with one staged `.mjs` it prints "All functions within
+  complexity threshold", and a fixture containing only an over-complex `.mjs` is
+  BLOCKED. The `SKIPPED` on a clean tree means "nothing changed", not "cannot
+  see". No upstream issue was filed for it.
+
 ## [2.0.0] - 2026-11-23
 
 ### Changed (BREAKING)

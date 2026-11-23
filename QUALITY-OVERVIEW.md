@@ -1,6 +1,6 @@
 # reinstall-xp-gate 质量全视图
 
-实测时间：2026-11-23 23:20　HEAD：`15056b0` + 本轮修复
+实测时间：2026-11-24 00:05　版本：v2.0.1
 工作区：干净　CI：node 22/24/26 + complexity + mutation 全绿
 
 ---
@@ -166,7 +166,7 @@ SAST 报 `residue.mjs:174` 用变量构造 `RegExp`。无注入风险（名字�
 | Open issues | **1**（#4，有意保留） |
 | Closed | #1 #2 #3 #5 |
 | CI | 全绿 |
-| Release | v2.0.0 已发布 |
+| Release | v2.0.1 已发布 |
 
 **#4 为何仍开**：本机不复现（OpenCode 靠 CLI 证据判活，判定正确），但 `idleDays()`
 读目录 mtime 的缺陷机制**未改**，实测仅 5 天——CLI 一消失就会误判。
