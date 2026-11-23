@@ -90,13 +90,18 @@ export function agentInstalled(agent) {
  * @returns {number} 距今天数；目录不可读时返回 Infinity
  */
 export function idleDays(skillRoot) {
+  return daysSinceWrite(agentHomeFor(skillRoot));
+}
+
+/** Days since `dir` was last written, or Infinity when it cannot be read. */
+function daysSinceWrite(dir) {
   let mtime = 0;
   try {
-    mtime = fs.statSync(agentHomeFor(skillRoot)).mtimeMs;
+    mtime = fs.statSync(dir).mtimeMs;
   } catch {
     /* 目录不可读按残留处理 */
   }
-  return mtime ? Math.floor((Date.now() - mtime) / 86400000) : Infinity;
+  return mtime ? Math.max(0, Math.floor((Date.now() - mtime) / 86400000)) : Infinity;
 }
 
 /** Format an idle-day count for the report; Infinity is not a number a human can read. */
@@ -109,12 +114,12 @@ function describeIdle(days) {
  * 判活按「桌面安装目录 > CLI 可解析 > 配置目录近 N 天有写入」三级证据依次
  * 短路，三级都不成立才判为残留。
  */
-export function probeLiveness(entry, liveDays = 30) {
+export function probeLiveness(entry, liveDays = 30, homeFor = agentHomeFor) {
   const evidence = [
     () => (SHARED_ROOTS.has(relToHome(entry.dir)) ? 'shared skill store' : ''),
     () => wrap('app', appEvidence(entry.agent)),
     () => wrap('cli', cliEvidence(entry.agent)),
-    () => recency(entry.dir, liveDays),
+    () => recency(entry.dir, liveDays, homeFor),
   ];
   for (const probe of evidence) {
     const reason = probe();
@@ -128,9 +133,33 @@ function wrap(kind, value) {
   return value ? `${kind}: ${value}` : '';
 }
 
+/**
+ * Names xp-gate itself writes into an agent home.
+ *
+ * `tui.json` is the plugin registration, `skills` is where this skill and the
+ * published bundle land. Anything else in the directory was put there by the
+ * agent or its user.
+ */
+const SELF_WRITTEN = new Set(['tui.json', 'skills']);
+
+/**
+ * True when an agent home contains only files this toolchain wrote.
+ *
+ * Issue #4: recency reads the home's mtime, and creating tui.json or skills/
+ * refreshes it. An uninstalled OpenCode then looks active forever, because the
+ * evidence of use is the checker's own writes. A home holding nothing else is
+ * residue, not a sign the user came back.
+ */
+export function selfWrittenHome(dir) {
+  const names = safeReaddir(dir).map((entry) => entry.name);
+  return names.length > 0 && names.every((name) => SELF_WRITTEN.has(name));
+}
+
 /** Third evidence tier: the config dir was written recently enough to count as live. */
-function recency(dir, liveDays) {
-  const days = idleDays(dir);
+function recency(dir, liveDays, homeFor = agentHomeFor) {
+  const home = homeFor(dir);
+  if (selfWrittenHome(home)) return '';
+  const days = daysSinceWrite(home);
   return days <= liveDays ? `active ${days}d ago` : '';
 }
 

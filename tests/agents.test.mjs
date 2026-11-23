@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-import { labelFor, isOfficialSkillRoot, probeLiveness, agentInstalled, discoverSkillRoots } from '../scripts/lib/agents.mjs';
+import { labelFor, isOfficialSkillRoot, probeLiveness, agentInstalled, discoverSkillRoots, selfWrittenHome } from '../scripts/lib/agents.mjs';
 import { HOME } from '../scripts/lib/proc.mjs';
 
 // discoverSkillRoots() scans the real HOME, so its OUTPUT is not asserted here:
@@ -71,6 +74,86 @@ test('probeLiveness honours the liveDays window argument', () => {
   assert.equal(probeLiveness(entry, 0).live, false);
   // Missing dir -> Infinity days, past any finite window.
   assert.equal(probeLiveness(entry, 100000).live, false);
+});
+
+/**
+ * Issue #4: an uninstalled OpenCode stays "live" because xp-gate writes
+ * tui.json and skills/ into its config dir, which refreshes the mtime that
+ * recency treats as "the user is still here".
+ *
+ * A home that contains NOTHING but what this toolchain writes is residue.
+ * A home that also holds something the agent itself created is not.
+ */
+function home(layout) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xgr-home-'));
+  for (const [name, kind] of Object.entries(layout)) {
+    const target = path.join(dir, name);
+    if (kind === 'dir') fs.mkdirSync(target);
+    else fs.writeFileSync(target, kind);
+  }
+  return dir;
+}
+
+test('selfWrittenHome is true when the dir holds only xp-gate products', () => {
+  const dir = home({ 'tui.json': '{}\n', skills: 'dir' });
+  try {
+    assert.equal(selfWrittenHome(dir), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('selfWrittenHome is false when the agent left something of its own', () => {
+  const dir = home({ 'tui.json': '{}\n', skills: 'dir', 'opencode.json': '{}\n' });
+  try {
+    assert.equal(selfWrittenHome(dir), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('selfWrittenHome is false for an empty dir, which is a fresh install', () => {
+  // An agent that just created its config dir has no skills yet. Calling that
+  // residue would skip the machine that most needs them.
+  const dir = home({});
+  try {
+    assert.equal(selfWrittenHome(dir), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('probeLiveness does not call a self-written home active', () => {
+  // The measured failure: no app, no CLI, and the only reason the agent looked
+  // live was that xp-gate had just written tui.json. Recency must not count
+  // that as the user coming back.
+  const dir = home({ 'tui.json': '{}\n', skills: 'dir' });
+  try {
+    const r = probeLiveness(
+      { agent: 'No Such Agent', dir: path.join(dir, 'skills') },
+      30,
+      () => dir,
+    );
+    assert.equal(r.live, false);
+    assert.match(r.reason, /no app\/cli/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('probeLiveness still trusts a recent write the agent made itself', () => {
+  const dir = home({ 'tui.json': '{}\n', skills: 'dir', 'opencode.json': '{}\n' });
+  try {
+    const r = probeLiveness(
+      { agent: 'No Such Agent', dir: path.join(dir, 'skills') },
+      30,
+      () => dir,
+    );
+    assert.equal(r.live, true);
+    assert.match(r.reason, /active 0d ago/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('agentInstalled reports a CLI that is not on PATH as absent', () => {
