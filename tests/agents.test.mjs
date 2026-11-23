@@ -1,12 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { labelFor, isOfficialSkillRoot, probeLiveness, agentInstalled } from '../scripts/lib/agents.mjs';
+import { labelFor, isOfficialSkillRoot, probeLiveness, agentInstalled, discoverSkillRoots } from '../scripts/lib/agents.mjs';
 import { HOME } from '../scripts/lib/proc.mjs';
 
-// NOTE: discoverSkillRoots() is deliberately NOT unit-tested here because it
-// scans the real HOME -- asserting on its output would encode this machine's
-// agent layout into the suite and fail on any other box.
+// discoverSkillRoots() scans the real HOME, so its OUTPUT is not asserted here:
+// that would encode this machine's agent layout into the suite. What IS pinned
+// is that it runs at all. MEASURED: the split that moved looksLikeSkillRoot to
+// agent-paths.mjs left the call in agents.mjs unresolved, and `install.mjs`
+// crashed on every machine with "looksLikeSkillRoot is not defined" -- a
+// function that exists only to decide whether a candidate path is a directory.
+test('discoverSkillRoots runs without throwing', () => {
+  const roots = discoverSkillRoots();
+  assert.ok(Array.isArray(roots), 'it returns the list of skill roots');
+});
 
 const under = (...parts) => `${HOME}/${parts.join('/')}`;
 

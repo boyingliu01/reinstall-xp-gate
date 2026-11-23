@@ -1,14 +1,39 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { HOME } from './proc.mjs';
 import { copyTree, isDir, isFile, pruneBackups, sameTree, stamp } from './util.mjs';
+import { cmpVersion } from './version.mjs';
 
 const SKILL_NAME = 'reinstall-xp-gate';
 
-/** The canonical copy installed by `install.mjs`, or this script's own tree. */
+/**
+ * The tree `install.mjs` copies from.
+ *
+ * MEASURED on the 2.0.1 release: this returned the canonical copy whenever it
+ * existed, so a checkout at 2.0.1 kept distributing the 2.0.0 it had installed
+ * earlier and reported "已写入 0 个副本". The newer tree has to win, or a
+ * release never reaches the machines it was built on.
+ */
 export function defaultSource(selfDir) {
   const canonical = path.join(HOME, '.local', 'share', 'xp-gate', 'skills', SKILL_NAME);
-  if (isDir(canonical) && isFile(path.join(canonical, 'SKILL.md'))) return canonical;
-  return selfDir;
+  return newerSkillDir(selfDir, canonical);
+}
+
+/** The skill tree with the higher VERSION, ignoring a dir that is not one. */
+export function newerSkillDir(a, b) {
+  const av = skillVersion(a);
+  const bv = skillVersion(b);
+  if (av === null) return bv === null ? a : b;
+  if (bv === null) return a;
+  return cmpVersion(av, bv) < 0 ? b : a;
+}
+
+/** The VERSION of a skill tree, or null when the dir is not one. */
+function skillVersion(dir) {
+  if (!isDir(dir) || !isFile(path.join(dir, 'SKILL.md'))) return null;
+  const versionFile = path.join(dir, 'VERSION');
+  if (!isFile(versionFile)) return '';
+  return fs.readFileSync(versionFile, 'utf8').trim();
 }
 
 export function backupDirFor(agent) {

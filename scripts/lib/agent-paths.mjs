@@ -50,14 +50,6 @@ export function relToHome(abs) {
   return path.relative(HOME, abs).split(path.sep).join('/');
 }
 
-/**
- * 空目录也算：新装的 agent 常常先建好 skills/ 但还没有内容，恰恰是最需要分发的地方。
- * 路径本身已由三条固定模式产生，不会误扫用户数据目录。
- */
-function looksLikeSkillRoot(dir) {
-  return isDir(dir);
-}
-
 export function labelFor(skillRoot) {
   const base = relToHome(skillRoot).replace(/\/skills$/, '');
   return KNOWN_LABELS[base.toLowerCase()] || base.replace(/^\./, '').replace(/[/-]+/g, ' ');

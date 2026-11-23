@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { HOME, which } from './proc.mjs';
 import { isDir } from './util.mjs';
-import { relToHome, agentHomeFor, labelFor } from './agent-paths.mjs';
+import { relToHome, agentHomeFor, labelFor, isOfficialSkillRoot } from './agent-paths.mjs';
 
 /** 桌面/IDE 安装目录：存在即说明 agent 还在用（配置目录卸载后常残留）。 */
 const APP_PROBES = {
@@ -170,6 +170,14 @@ function candidateRoots() {
  * Returns null for paths the filters exclude (backups, marketplaces, non-dirs).
  * @returns {{abs:string, root:object}|null}
  */
+/**
+ * 空目录也算：新装的 agent 常常先建好 skills/ 但还没有内容，恰恰是最需要分发的地方。
+ * 路径本身已由三条固定模式产生，不会误扫用户数据目录。
+ */
+function looksLikeSkillRoot(dir) {
+  return isDir(dir);
+}
+
 function describeRoot(dir, liveDays) {
   const abs = path.resolve(dir);
   if (BACKUP_RE.test(abs) || SKIP_RE.test(abs) || !looksLikeSkillRoot(abs)) return null;
