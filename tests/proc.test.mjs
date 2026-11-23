@@ -6,7 +6,7 @@ import os from 'node:os';
 
 import {
   HOME, effectivePath, envWithPath, firstExisting, isWindowsShim, npmCli, packageDir, probe,
-  resetPackageDir, run, withPlatform, parseWhichOutput,
+  resetPackageDir, run, withPlatform, parseWhichOutput, PROBE_TIMEOUT_MS,
 } from '../scripts/lib/proc.mjs';
 import { isFile } from '../scripts/lib/util.mjs';
 
@@ -217,4 +217,27 @@ test('parseWhichOutput ignores carriage returns in where output', () => {
   // in the path and produce a path that does not exist.
   const out = 'C:\\a\\tool.exe\r\n';
   assert.equal(withPlatform('win32', () => parseWhichOutput('C:\\a\\tool.exe\r\n', (p) => p)), 'C:\\a\\tool.exe');
+});
+
+// ---------------------------------------------------------------------------
+// Timeout budgets (magic-number refactor).
+//
+// These are values, not behaviour, and nothing above pins them: a refactor that
+// silently turned 10s into 30s would still pass every other test in this file.
+// The budgets are named by INTENT, not by duration, because three groups of
+// equal numbers existed only by coincidence -- `npm root -g` and a node syntax
+// check both got 30s for unrelated reasons and must be free to diverge.
+// ---------------------------------------------------------------------------
+
+test('PROBE_TIMEOUT_MS is a short budget for commands that must answer fast', () => {
+  // which/where/registry queries. If one of these hangs, the tool is unusable
+  // and a long wait only delays the report.
+  assert.equal(PROBE_TIMEOUT_MS, 10000);
+});
+
+test('probe-tier lookups actually use PROBE_TIMEOUT_MS', () => {
+  // The constant is worthless if the call sites kept their own literals.
+  const src = fs.readFileSync(new URL('../scripts/lib/proc.mjs', import.meta.url), 'utf8');
+  const probeCalls = src.match(/timeout: 10000\b/g) || [];
+  assert.deepEqual(probeCalls, [], 'probe-tier call sites must reference PROBE_TIMEOUT_MS, not 10000');
 });

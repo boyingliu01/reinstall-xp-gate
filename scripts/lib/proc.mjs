@@ -5,6 +5,29 @@ import { isDir, isFile, stripNul } from './util.mjs';
 
 export const HOME = os.homedir();
 
+/**
+ * Budgets for the three kinds of child process this module starts.
+ *
+ * Named by INTENT, deliberately not by duration. A count of the literals used to
+ * show 30s four times, but those four were unrelated decisions -- a node syntax
+ * check and `npm root -g` happen to need the same number today while having
+ * nothing to do with each other. Grouping them under one `TIMEOUT_30S` would
+ * couple two changes that should stay independent, which is the failure mode
+ * this file's `spawnOpts` comment already warns about.
+ *
+ * What IS shared is everything inside one tier: every lookup that must answer
+ * fast gets the same budget, and every xp-gate mutation gets the same budget.
+ */
+/** which / where / registry queries: a slow one means the tool is unusable. */
+export const PROBE_TIMEOUT_MS = 10000;
+
+/**
+ * xp-gate mutations that rewrite the global install: uninstall --purge,
+ * `npm uninstall -g`, `update-hooks`, `doctor`. They shell out to the same CLI
+ * and are all slow for the same reason, so they share one budget.
+ */
+export const XP_GATE_SLOW_OP_TIMEOUT_MS = 300000;
+
 /** Registry keys holding PATH, in append order. */
 const PATH_KEYS = [
   'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
@@ -45,7 +68,7 @@ export function withPlatform(platform, fn) {
 /** The raw `Path` value of one registry environment key, or ''. */
 function readRegPath(key) {
   if (!isFile(WIN_REG)) return '';
-  const r = spawnSync(WIN_REG, ['query', key, '/v', 'Path'], { encoding: 'utf8', timeout: 10000 });
+  const r = spawnSync(WIN_REG, ['query', key, '/v', 'Path'], { encoding: 'utf8', timeout: PROBE_TIMEOUT_MS });
   if (r.status !== 0) return '';
   return parseRegPathLine(r.stdout);
 }
@@ -238,11 +261,11 @@ export function parseWhichOutput(stdout, exists = firstExisting) {
 
 export function which(tool) {
   if (process.platform === 'win32') {
-    const r = run(WIN_WHERE, [tool], { timeout: 10000 });
+    const r = run(WIN_WHERE, [tool], { timeout: PROBE_TIMEOUT_MS });
     if (r.status !== 0) return '';
     return parseWhichOutput(r.stdout);
   }
-  const r = run('which', [tool], { timeout: 10000 });
+  const r = run('which', [tool], { timeout: PROBE_TIMEOUT_MS });
   return r.status === 0 ? String(r.stdout).trim() : '';
 }
 

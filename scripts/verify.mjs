@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { HOME, packageDir, runNpm, xpJson, gitConfig } from './lib/proc.mjs';
+import {
+  HOME, packageDir, runNpm, xpJson, gitConfig, XP_GATE_SLOW_OP_TIMEOUT_MS,
+} from './lib/proc.mjs';
 import { discoverSkillRoots, nativeDelphiAgents, agentInstalled } from './lib/agents.mjs';
 import { planSkillCopies, summarizeRows } from './lib/skills.mjs';
 import { toolReport, cmpVersion } from './lib/tools.mjs';
@@ -70,7 +72,7 @@ function isVacuousForMissingAgent(check) {
   return /TUI registration/i.test(String(check.name)) && !agentInstalled('OpenCode');
 }
 
-const doctor = xpJson(['doctor', '--json'], { timeout: 300000 });
+const doctor = xpJson(['doctor', '--json'], { timeout: XP_GATE_SLOW_OP_TIMEOUT_MS });
 if (!doctor.json?.checks) {
   add('doctor', 'FAIL', `doctor --json 无输出: ${String(doctor.stderr || '').slice(0, 200)}`);
 } else {

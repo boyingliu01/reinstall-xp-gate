@@ -1,5 +1,15 @@
 import { runNpm, toolVersion, which, run } from './proc.mjs';
 
+/**
+ * Budget for installing a global package, shared by the npm and pip paths.
+ *
+ * These two carried the same bare 600000: one intent copied twice, so fixing a
+ * slow install on one side left the other behind. Unlike the lookup timeouts in
+ * proc.mjs (which are separate decisions that happen to share a number), this
+ * really is one budget for one kind of operation.
+ */
+export const PACKAGE_INSTALL_TIMEOUT_MS = 600000;
+
 export const TOOLS = [
   { name: 'jscpd', kind: 'npm', pkg: 'jscpd' },
   { name: 'lizard', kind: 'pip', pkg: 'lizard' },
@@ -256,7 +266,7 @@ export async function toolReport(deps = {}) {
 
 /** `install -g <pkg>@latest` through npm; the exit code is the verdict. */
 function upgradeNpm(row, d) {
-  const r = d.runNpm(['install', '-g', `${row.pkg}@latest`], { stdio: 'inherit', timeout: 600000 });
+  const r = d.runNpm(['install', '-g', `${row.pkg}@latest`], { stdio: 'inherit', timeout: PACKAGE_INSTALL_TIMEOUT_MS });
   return r.status ?? 1;
 }
 
@@ -264,7 +274,7 @@ function upgradeNpm(row, d) {
 function upgradePip(row, d) {
   const py = d.pythonBin();
   if (!py) return 1;
-  const r = d.run(py, ['-m', 'pip', 'install', '-U', row.pkg], { stdio: 'inherit', timeout: 600000 });
+  const r = d.run(py, ['-m', 'pip', 'install', '-U', row.pkg], { stdio: 'inherit', timeout: PACKAGE_INSTALL_TIMEOUT_MS });
   return r.status ?? 1;
 }
 

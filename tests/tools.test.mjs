@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { semverOf, cmpVersion, TOOLS, classify, statusOf } from '../scripts/lib/tools.mjs';
+import fs from 'node:fs';
+
+import {
+  semverOf, cmpVersion, TOOLS, classify, statusOf, PACKAGE_INSTALL_TIMEOUT_MS,
+} from '../scripts/lib/tools.mjs';
 
 // semverOf + cmpVersion decide "is this tool outdated". A wrong answer either
 // silently skips an upgrade (gate tool stays old) or claims a bogus upgrade is
@@ -107,4 +111,21 @@ test('statusOf blocks an upgrade claim on an unparseable version', () => {
   // not be read counts as behind -- never as current.
   assert.equal(statusOf({ kind: 'npm', version: '', latest: '2.0.0' }), 'outdated');
   assert.equal(statusOf({ kind: 'npm', version: '2.0.0', latest: '' }), 'unverified');
+});
+
+// ---------------------------------------------------------------------------
+// Install budget (magic-number refactor).
+//
+// Two sites installed a global package -- `npm install -g` and `pip install -U`
+// -- and both carried a bare 600000. Same intent, copied twice: change one and
+// the other silently keeps the old budget.
+// ---------------------------------------------------------------------------
+
+test('PACKAGE_INSTALL_TIMEOUT_MS covers both npm and pip global installs', () => {
+  assert.equal(PACKAGE_INSTALL_TIMEOUT_MS, 600000);
+});
+
+test('both global-install call sites use PACKAGE_INSTALL_TIMEOUT_MS', () => {
+  const src = fs.readFileSync(new URL('../scripts/lib/tools.mjs', import.meta.url), 'utf8');
+  assert.deepEqual(src.match(/timeout: 600000\b/g) || [], [], 'install sites must use the constant');
 });

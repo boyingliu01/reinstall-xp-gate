@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
-  HOME, packageDir, resetPackageDir, runNpm, xp, gitConfig,
+  HOME, packageDir, resetPackageDir, runNpm, xp, gitConfig, XP_GATE_SLOW_OP_TIMEOUT_MS,
 } from './lib/proc.mjs';
 import { discoverSkillRoots, hookTemplateDirs, nativeDelphiAgents } from './lib/agents.mjs';
 import {
@@ -30,6 +30,9 @@ const skipVerify = args.includes('--no-verify');
 const dryRun = !apply;
 const tag = dryRun ? '[dry]' : '[apply]';
 const PKG = '@boyingliu01/xp-gate';
+
+/** A full re-verification runs every check in turn: its own, longer budget. */
+const VERIFY_TIMEOUT_MS = 600000;
 
 function log(text) {
   console.log(`${tag} ${text}`);
@@ -109,7 +112,7 @@ if (oldPkgDir) {
 }
 
 if (apply) {
-  const un = xp(['uninstall', '--global', '--purge', '--force'], { timeout: 300000 });
+  const un = xp(['uninstall', '--global', '--purge', '--force'], { timeout: XP_GATE_SLOW_OP_TIMEOUT_MS });
   log(`uninstall 退出码 ${un.status}`);
   if (un.status !== 0) {
     item('WARN', `uninstall 非 0 退出：${tail(un, 600)}`);
@@ -155,7 +158,7 @@ if (apply) {
     log(`清理 purge 未删除的 ${legacyDir}`);
   }
 
-  const unNpm = runNpm(['uninstall', '-g', PKG], { stdio: 'inherit', timeout: 300000 });
+  const unNpm = runNpm(['uninstall', '-g', PKG], { stdio: 'inherit', timeout: XP_GATE_SLOW_OP_TIMEOUT_MS });
   log(`npm uninstall -g 退出码 ${unNpm.status}`);
   resetPackageDir();
   if (oldPkgDir && isDir(oldPkgDir)) {
@@ -192,7 +195,7 @@ if (apply) {
   log(`xp-gate install --global 退出码 ${init.status}（该命令恒返回 0，正确性由 verify 判定）`);
   if (init.status !== 0) log(tail(init, 800));
 
-  const hooks = xp(['update-hooks', '--global'], { timeout: 300000 });
+  const hooks = xp(['update-hooks', '--global'], { timeout: XP_GATE_SLOW_OP_TIMEOUT_MS });
   log(`xp-gate update-hooks --global 退出码 ${hooks.status}`);
   if (hooks.status !== 0) log(tail(hooks, 600));
 }
@@ -282,7 +285,7 @@ if (skipVerify) {
   log('已跳过 verify（--no-verify）');
 } else if (apply) {
   const verify = path.join(skillRoot, 'scripts', 'verify.mjs');
-  const r = spawnSync(process.execPath, [verify], { stdio: 'inherit', timeout: 600000 });
+  const r = spawnSync(process.execPath, [verify], { stdio: 'inherit', timeout: VERIFY_TIMEOUT_MS });
   log(`verify 退出码 ${r.status}`);
   if (r.status !== 0) process.exit(r.status ?? 1);
 } else {

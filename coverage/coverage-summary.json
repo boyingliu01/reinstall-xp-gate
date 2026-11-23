@@ -1,7 +1,7 @@
 {
   "total": {
     "lines": {
-      "pct": 92.6
+      "pct": 92.72
     },
     "branches": {
       "pct": 92.03
@@ -10,7 +10,7 @@
       "pct": 90.2
     },
     "statements": {
-      "pct": 92.6
+      "pct": 92.72
     }
   },
   "coverage.mjs": {
@@ -85,7 +85,7 @@
   },
   "proc.mjs": {
     "lines": {
-      "pct": 78.57
+      "pct": 80.28
     },
     "branches": {
       "pct": 79.63
@@ -94,7 +94,7 @@
       "pct": 75
     },
     "statements": {
-      "pct": 78.57
+      "pct": 80.28
     }
   },
   "report.mjs": {
