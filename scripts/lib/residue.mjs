@@ -140,6 +140,31 @@ function removeStraySelfCopy(rootDir, remove) {
     .length;
 }
 
+/** The name this skill carried before 2.0.0. */
+const LEGACY_SELF_NAME = 'xp-gate-reinstall';
+
+/**
+ * Delete a pre-2.0.0 copy under the old name from ONE agent root.
+ *
+ * Separate from `pruneDeadRoots` because that one only ever receives agents
+ * judged dead. The rename has to reach every root still in use: measured during
+ * the real 2.0.0 install, six new copies were written and all five old ones
+ * stayed behind, because nothing in the install path looked at the legacy name.
+ * `install.mjs` calls this right after writing the current copy.
+ *
+ * The current name is never touched -- deleting it would undo the install this
+ * sweep is part of. An edited legacy copy is user data and stays, by the same
+ * marker rule as every other copy here.
+ *
+ * @returns {number} 1 when a legacy copy was removed, else 0
+ */
+export function sweepLegacySelfCopy(rootDir, remove = rmrf) {
+  const legacy = path.join(rootDir, LEGACY_SELF_NAME);
+  if (!isOurSelfCopy(legacy)) return 0;
+  remove(legacy);
+  return 1;
+}
+
 /** True only when the directory carries OUR skill marker, not merely our name. */
 function isOurSelfCopy(dir) {
   const skillFile = path.join(dir, 'SKILL.md');

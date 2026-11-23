@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import {
   backupThenRemove, hasXpGateMarker, scanSkillResidue, pruneDeadRoots,
-  contentHashes, MARKER_SCAN_LIMIT,
+  contentHashes, MARKER_SCAN_LIMIT, sweepLegacySelfCopy,
 } from '../scripts/lib/residue.mjs';
 import { hashTree, isFile } from '../scripts/lib/util.mjs';
 import { tmpDir, fakePkg, deploySkill, editSkill } from './fixtures.mjs';
@@ -168,33 +168,26 @@ test('pruneDeadRoots deletes byte-identical copies but spares edited ones', (t) 
 /** What install.mjs actually writes: the whole tree, front matter included. */
 const SELF_SKILL_MD = ['---', 'name: xp-gate-reinstall', 'version: 1.3.3', '---', '', '# self', ''].join('\n');
 
-test('pruneDeadRoots also removes a stray xp-gate-reinstall copy', (t) => {
-  const pkg = fakePkg(t, ['alpha']);
+/** An agent root holding a pre-2.0.0 self copy. */
+function legacySelfRoot(t, contents = SELF_SKILL_MD) {
   const root = tmpDir(t);
-  fs.mkdirSync(path.join(root, 'xp-gate-reinstall'));
-  fs.writeFileSync(path.join(root, 'xp-gate-reinstall', 'SKILL.md'), SELF_SKILL_MD);
+  const legacy = path.join(root, 'xp-gate-reinstall');
+  fs.mkdirSync(legacy);
+  fs.writeFileSync(path.join(legacy, 'SKILL.md'), contents);
+  return { root, legacy };
+}
 
-  const removed = pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
-
-  assert.equal(removed, 1);
-  assert.equal(fs.existsSync(path.join(root, 'xp-gate-reinstall')), false);
-});
-
-test('pruneDeadRoots removes the OLD skill name left behind by the rename', (t) => {
+test('pruneDeadRoots also removes a stray copy under the OLD skill name', (t) => {
   // The skill was renamed xp-gate-reinstall -> reinstall-xp-gate in 2.0.0. Every
   // machine that ran the old installer has a copy under the old name in each
-  // agent root. Nothing would ever update that copy again -- it is not in the
-  // package under that name any more -- so it has to be swept automatically, or
+  // agent root. Nothing would ever update that copy again -- the package ships
+  // nothing under that name any more -- so it has to be swept automatically, or
   // a fleet of stale skills accumulates.
   const pkg = fakePkg(t, ['alpha']);
-  const root = tmpDir(t);
-  fs.mkdirSync(path.join(root, 'xp-gate-reinstall'));
-  fs.writeFileSync(path.join(root, 'xp-gate-reinstall', 'SKILL.md'), SELF_SKILL_MD);
+  const { root, legacy } = legacySelfRoot(t);
 
-  const removed = pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
-
-  assert.equal(removed, 1);
-  assert.equal(fs.existsSync(path.join(root, 'xp-gate-reinstall')), false, 'legacy copy must be swept');
+  assert.equal(pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]), 1);
+  assert.equal(fs.existsSync(legacy), false, 'legacy copy must be swept');
 });
 
 test('pruneDeadRoots leaves an EDITED legacy copy alone', (t) => {
@@ -202,10 +195,7 @@ test('pruneDeadRoots leaves an EDITED legacy copy alone', (t) => {
   // delete, an edited one is user data. The rename must not become a licence to
   // delete whatever happens to sit under the old name.
   const pkg = fakePkg(t, ['alpha']);
-  const root = tmpDir(t);
-  const legacy = path.join(root, 'xp-gate-reinstall');
-  fs.mkdirSync(legacy);
-  fs.writeFileSync(path.join(legacy, 'SKILL.md'), `${USER_EDIT}\n`);
+  const { root, legacy } = legacySelfRoot(t, `${USER_EDIT}\n`);
 
   pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
 
@@ -243,4 +233,36 @@ test('contentHashes maps skill names to directory hashes', (t) => {
 test('contentHashes returns an empty map for a package without skills/', (t) => {
   assert.equal(contentHashes(tmpDir(t)).size, 0);
   assert.equal(contentHashes('/no/such/pkg').size, 0);
+});
+
+test('sweepLegacySelfCopy clears the old name in a LIVE agent root too', (t) => {
+  // pruneDeadRoots only ever sees agents judged dead. The rename has to reach
+  // every root that is still in use as well -- measured during the real 2.0.0
+  // install: six new copies were written and all five old ones stayed behind,
+  // because nothing in install.mjs looked at the legacy name at all.
+  const { root, legacy } = legacySelfRoot(t);
+
+  const removed = sweepLegacySelfCopy(root);
+
+  assert.equal(removed, 1);
+  assert.equal(fs.existsSync(legacy), false);
+});
+
+test('sweepLegacySelfCopy leaves an edited legacy copy alone', (t) => {
+  const { root, legacy } = legacySelfRoot(t, `${USER_EDIT}\n`);
+
+  assert.equal(sweepLegacySelfCopy(root), 0);
+  assert.equal(fs.existsSync(legacy), true);
+});
+
+test('sweepLegacySelfCopy never touches the current name', (t) => {
+  // The sweep runs from install.mjs right after the current copy is written;
+  // deleting that would undo the install it is part of.
+  const root = tmpDir(t);
+  const current = path.join(root, 'reinstall-xp-gate');
+  fs.mkdirSync(current);
+  fs.writeFileSync(path.join(current, 'SKILL.md'), SELF_SKILL_MD.replace('xp-gate-reinstall', 'reinstall-xp-gate'));
+
+  assert.equal(sweepLegacySelfCopy(root), 0);
+  assert.equal(fs.existsSync(current), true);
 });
