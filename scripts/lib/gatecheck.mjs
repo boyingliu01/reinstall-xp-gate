@@ -77,7 +77,7 @@ import { verdictOf } from './verdict.mjs';
  * again". Concatenation keeps the scan target real and this file clean.
  */
 export const SECRET_FIXTURE = [
-  '// planted by xp-gate-reinstall audit -- do not copy into real code',
+  '// planted by reinstall-xp-gate audit -- do not copy into real code',
   `const awsKey = "AKIA${'QWERTYUIOPASDFGH'}";`,
   `const ghToken = "ghp_${'16C7e42F292c6912E7710c838347Ae178B4a'}";`,
   'module.exports = { awsKey, ghToken };',

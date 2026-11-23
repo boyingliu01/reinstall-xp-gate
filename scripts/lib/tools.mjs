@@ -129,7 +129,7 @@ export async function pipLatest(pkg, deps = {}) {
 export async function fetchJsonVersion(url, timeoutMs, fetchImpl = fetch) {
   try {
     const res = await fetchImpl(url, {
-      headers: { 'user-agent': 'xp-gate-reinstall' },
+      headers: { 'user-agent': 'reinstall-xp-gate' },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;

@@ -21,7 +21,7 @@ if (!roots.some((r) => path.resolve(r.dir) === path.resolve(canonicalRoot))) {
 }
 const dead = allRoots.filter((r) => !r.live);
 
-section(`分发 xp-gate-reinstall${dryRun ? '（dry-run）' : ''}`);
+section(`分发 reinstall-xp-gate${dryRun ? '（dry-run）' : ''}`);
 console.log(`  源: ${source}`);
 if (!isDir(source)) {
   console.error(`  源目录不存在: ${source}`);

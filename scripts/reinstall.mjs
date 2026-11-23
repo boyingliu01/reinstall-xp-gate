@@ -246,7 +246,7 @@ if (apply) {
   }
 
   const selfRes = syncSelf({ source: defaultSource(skillRoot), roots, dryRun: false });
-  log(`xp-gate-reinstall 同步: ${selfRes.filter((r) => r.state === 'new' || r.state === 'update').length} 个副本更新`);
+  log(`reinstall-xp-gate 同步: ${selfRes.filter((r) => r.state === 'new' || r.state === 'update').length} 个副本更新`);
 } else {
   const pkg = packageDir();
   const allRoots = discoverSkillRoots();

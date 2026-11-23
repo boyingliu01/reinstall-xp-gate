@@ -2,7 +2,7 @@ import path from 'node:path';
 import { HOME } from './proc.mjs';
 import { copyTree, isDir, isFile, pruneBackups, sameTree, stamp } from './util.mjs';
 
-const SKILL_NAME = 'xp-gate-reinstall';
+const SKILL_NAME = 'reinstall-xp-gate';
 
 /** The canonical copy installed by `install.mjs`, or this script's own tree. */
 export function defaultSource(selfDir) {

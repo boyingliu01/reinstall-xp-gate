@@ -112,13 +112,42 @@ function isIdenticalCopy(dest, expected, hashFn) {
 }
 
 /**
+ * The skill's own copies, current name first then the pre-2.0.0 name.
+ *
+ * The rename is why this is a list. Every machine that ran the old installer
+ * carries `xp-gate-reinstall/` in each agent root; the package no longer ships
+ * anything under that name, so nothing would ever update those copies again and
+ * they would sit forever looking like a live skill. Sweeping them here is what
+ * makes the rename automatic instead of a manual chore on every dev box.
+ */
+const SELF_NAMES = ['reinstall-xp-gate', 'xp-gate-reinstall'];
+
+/**
  * The skill's own copy is NOT part of the published package, so it is absent
  * from `contentHashes` and would survive the loop above. `install.mjs` writes it
  * into every agent root it can see, including ones already judged dead.
+ *
+ * `remove` is used only for a copy this skill actually wrote -- a self copy has
+ * no package hash to compare against, so the marker is the SKILL.md `name:`
+ * field. An edited copy under either name is user data and stays.
  */
 function removeStraySelfCopy(rootDir, remove) {
-  const selfCopy = path.join(rootDir, 'xp-gate-reinstall');
-  if (!isFile(path.join(selfCopy, 'SKILL.md'))) return false;
-  remove(selfCopy);
-  return true;
+  return SELF_NAMES.filter((name) => isOurSelfCopy(path.join(rootDir, name)))
+    .map((name) => {
+      remove(path.join(rootDir, name));
+      return true;
+    })
+    .length;
+}
+
+/** True only when the directory carries OUR skill marker, not merely our name. */
+function isOurSelfCopy(dir) {
+  const skillFile = path.join(dir, 'SKILL.md');
+  if (!isFile(skillFile)) return false;
+  try {
+    const head = fs.readFileSync(skillFile, 'utf8').split('\n').slice(0, 20).join('\n');
+    return SELF_NAMES.some((name) => new RegExp(`^name:\\s*${name}\\s*$`, 'm').test(head));
+  } catch {
+    return false;
+  }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# xp-gate-reinstall — WSL 开发环境创建脚本
+# reinstall-xp-gate — WSL 开发环境创建脚本
 #
 # 目标环境（依据 README.md / package.json / .github/workflows/test.yml 实测核对）：
 #   - Node 26 LTS（package.json engines >=22；CI 矩阵 22 / 24 / 26）
@@ -130,8 +130,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 这是推荐的起点——Windows 侧的仓库可能带 CRLF，或位于 /mnt/c（IO 慢、换行易漂）。
 if [ "$DO_CLONE" = 1 ]; then
   CLONE_DIR="${CLONE_DIR:-$HOME/projects}"
-  DEST="$CLONE_DIR/xp-gate-reinstall"
-  REPO_URL="${REPO_URL:-https://github.com/boyingliu01/xp-gate-reinstall-skill.git}"
+  DEST="$CLONE_DIR/reinstall-xp-gate"
+  REPO_URL="${REPO_URL:-https://github.com/boyingliu01/reinstall-xp-gate.git}"
   info "克隆目标：$DEST"
   info "来源：$REPO_URL"
   [ "$DRY_RUN" = 1 ] || mkdir -p "$CLONE_DIR"
@@ -306,10 +306,15 @@ if [ -x "$PY" ]; then
   fi
 
   # --with-shell：编辑器和几个只读别名。与 PATH 段分开标记，互不覆盖。
-  SHELL_MARKER="# >>> xp-gate-reinstall >>>"
-  SHELL_MARKER_END="# <<< xp-gate-reinstall <<<"
+  SHELL_MARKER="# >>> reinstall-xp-gate >>>"
+  SHELL_MARKER_END="# <<< reinstall-xp-gate <<<"
+  # A block written before 2.0.0 carries the old marker. Treating it as absent
+  # would append a second block and leave two competing EDITOR/alias sections in
+  # ~/.bashrc, so the old marker counts as "already present".
+  SHELL_MARKER_LEGACY="# >>> xp-gate-reinstall >>>"
   if [ "$WITH_SHELL" = 1 ]; then
-    if grep -qF "$SHELL_MARKER" "$BASH_RC" 2>/dev/null; then
+    if grep -qF "$SHELL_MARKER" "$BASH_RC" 2>/dev/null \
+      || grep -qF "$SHELL_MARKER_LEGACY" "$BASH_RC" 2>/dev/null; then
       ok "$BASH_RC 已有编辑器/别名段"
     elif [ "$DRY_RUN" = 1 ]; then
       printf '   [dry-run] 在 %s 追加编辑器/别名段\n' "$BASH_RC"
@@ -446,10 +451,12 @@ fi
 # ------------------------------------------------------------------ 7 技能安装 --
 section "本 skill 的 canonical 副本"
 
-# 关键陷阱：xp-gate 发布包从 v1.2.2 起自带 skills/xp-gate-reinstall，
+# 注意：xp-gate 发布包在 v1.2.2 ~ 0.38.x 某段时期曾自带 skills/xp-gate-reinstall，
 # 全局装会被 `update-skill --all` 用发布包版本覆盖 canonical 目录。
-# 所以必须 **在 xp-gate 装完之后** 才同步，顺序反过来等于白做。
-CANON="$HOME/.local/share/xp-gate/skills/xp-gate-reinstall"
+# 0.38.125 实测已不再自带（skills/ 下 12 个，无此 skill），但保留“最后同步”的顺序
+# 是无害的，也兼容仍在使用旧发布包的机器。
+# 2.0.0 起本 skill 更名为 reinstall-xp-gate，旧名副本由 install.mjs 自动清理。
+CANON="$HOME/.local/share/xp-gate/skills/reinstall-xp-gate"
 
 if [ -f "$REPO_ROOT/SKILL.md" ] && [ -f "$REPO_ROOT/scripts/install.mjs" ]; then
   if [ "$DRY_RUN" = 1 ]; then

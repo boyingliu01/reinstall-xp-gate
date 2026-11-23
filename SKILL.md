@@ -1,5 +1,5 @@
 ---
-name: xp-gate-reinstall
+name: reinstall-xp-gate
 version: 1.0.0
 description: >
   跨 agent 全新重装 xp-gate：快照用户配置 → 用 xp-gate 命令卸载并清理历史残留 →
@@ -14,7 +14,7 @@ description: >
 `uninstall --purge` 之后仍然存在。事实源（canonical）：
 
 ```
-~/.local/share/xp-gate/skills/xp-gate-reinstall/
+~/.local/share/xp-gate/skills/reinstall-xp-gate/
 ```
 
 其他 agent 的 skills 目录里是**独立副本**，由 `scripts/install.mjs` 同步；每个副本

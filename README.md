@@ -1,4 +1,4 @@
-# xp-gate-reinstall
+# reinstall-xp-gate
 
 一个 **agent skill**：在任意 agent（DSH / Claude Code / OpenCode / Qoder / Trae / WorkBuddy / CodeBuddy / Codex / DWS / Pi …）
 上全新重装 **xp-gate**，并验证门禁**真实生效**，而不是只看命令退出码。
@@ -155,7 +155,7 @@ SKILL.md 使用的约定是 `<root>/<name>/SKILL.md`。把本仓库放到对应�
 | WorkBuddy | `~/.workbuddy/skills` |
 | 共享仓库 | `~/.agents/skills` |
 
-事实源（canonical）：`~/.local/share/xp-gate/skills/xp-gate-reinstall/`。改内容只改那处，再跑 `install.mjs` 同步。
+事实源（canonical）：`~/.local/share/xp-gate/skills/reinstall-xp-gate/`。改内容只改那处，再跑 `install.mjs` 同步。
 
 ## 注意
 

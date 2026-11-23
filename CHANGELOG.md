@@ -4,6 +4,49 @@ All notable changes to this skill are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning is [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-11-23
+
+### Changed (BREAKING)
+
+- **Renamed the skill and the repository `xp-gate-reinstall` ->
+  `reinstall-xp-gate`.**
+
+  The old name read as if this skill belonged to xp-gate, and that reading is
+  not harmless: the whole point of the skill is to uninstall and reinstall
+  xp-gate, so shipping it as part of xp-gate would mean the tool removes itself
+  mid-run. It has to live outside. The name now says what it does instead of
+  what it acts on.
+
+  What changed: the `name:` in `SKILL.md`, the directory `install.mjs` writes
+  into each agent root, the canonical copy under
+  `~/.local/share/xp-gate/skills/`, the repo URL, and the `.bashrc` block
+  markers written by `setup-wsl.sh`.
+
+### Added
+
+- **Automatic cleanup of the pre-2.0.0 copies.** Renaming the directory would
+  otherwise leave an `xp-gate-reinstall/` in every agent root on every machine
+  that had run the old installer, and nothing would ever update it again -- the
+  package no longer ships anything under that name -- so each box would
+  accumulate a permanent stale skill that still looks live.
+  `pruneDeadRoots` now sweeps both names.
+
+  The sweep matches on the `SKILL.md` `name:` marker, not on the directory name
+  alone. The previous version deleted `xp-gate-reinstall/` unconditionally, so a
+  user who had edited their copy would have lost those edits with no warning;
+  that is now covered by a test.
+
+- `setup-wsl.sh` recognises the old `# >>> xp-gate-reinstall >>>` block in
+  `~/.bashrc` as already present. Without it, a re-run on an existing machine
+  would append a second block with competing `EDITOR` and alias definitions.
+
+### Notes
+
+- `setup-wsl.sh` claimed xp-gate's package had shipped this skill since v1.2.2.
+  Measured on 0.38.125: its `skills/` holds 12 skills and this is not one of
+  them. The comment now records that, while keeping the "sync last" ordering so
+  machines still on an older package are unaffected.
+
 ## [1.3.3] - 2026-02-21
 
 ### Fixed

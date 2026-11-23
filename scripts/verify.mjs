@@ -143,9 +143,9 @@ if (!pkg) {
     add('skills parity', 'PASS', `${names.length} skills × ${roots.length} agents 全部一致`);
   }
 
-  const selfMissing = roots.filter((r) => !isFile(path.join(r.dir, 'xp-gate-reinstall', 'SKILL.md')));
-  if (selfMissing.length) add('xp-gate-reinstall copy', 'WARN', `以下 agent 未分发: ${selfMissing.map((r) => r.agent).join(', ')}`);
-  else add('xp-gate-reinstall copy', 'PASS', `${roots.length} 个 agent 根均已分发`);
+  const selfMissing = roots.filter((r) => !isFile(path.join(r.dir, 'reinstall-xp-gate', 'SKILL.md')));
+  if (selfMissing.length) add('reinstall-xp-gate copy', 'WARN', `以下 agent 未分发: ${selfMissing.map((r) => r.agent).join(', ')}`);
+  else add('reinstall-xp-gate copy', 'PASS', `${roots.length} 个 agent 根均已分发`);
 }
 
 if (deadRoots.length) {

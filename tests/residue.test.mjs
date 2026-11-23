@@ -165,16 +165,51 @@ test('pruneDeadRoots deletes byte-identical copies but spares edited ones', (t) 
   assert.equal(fs.readFileSync(path.join(edited, 'alpha', 'SKILL.md'), 'utf8'), USER_EDIT);
 });
 
+/** What install.mjs actually writes: the whole tree, front matter included. */
+const SELF_SKILL_MD = ['---', 'name: xp-gate-reinstall', 'version: 1.3.3', '---', '', '# self', ''].join('\n');
+
 test('pruneDeadRoots also removes a stray xp-gate-reinstall copy', (t) => {
   const pkg = fakePkg(t, ['alpha']);
   const root = tmpDir(t);
   fs.mkdirSync(path.join(root, 'xp-gate-reinstall'));
-  fs.writeFileSync(path.join(root, 'xp-gate-reinstall', 'SKILL.md'), '# self\n');
+  fs.writeFileSync(path.join(root, 'xp-gate-reinstall', 'SKILL.md'), SELF_SKILL_MD);
 
   const removed = pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
 
   assert.equal(removed, 1);
   assert.equal(fs.existsSync(path.join(root, 'xp-gate-reinstall')), false);
+});
+
+test('pruneDeadRoots removes the OLD skill name left behind by the rename', (t) => {
+  // The skill was renamed xp-gate-reinstall -> reinstall-xp-gate in 2.0.0. Every
+  // machine that ran the old installer has a copy under the old name in each
+  // agent root. Nothing would ever update that copy again -- it is not in the
+  // package under that name any more -- so it has to be swept automatically, or
+  // a fleet of stale skills accumulates.
+  const pkg = fakePkg(t, ['alpha']);
+  const root = tmpDir(t);
+  fs.mkdirSync(path.join(root, 'xp-gate-reinstall'));
+  fs.writeFileSync(path.join(root, 'xp-gate-reinstall', 'SKILL.md'), SELF_SKILL_MD);
+
+  const removed = pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
+
+  assert.equal(removed, 1);
+  assert.equal(fs.existsSync(path.join(root, 'xp-gate-reinstall')), false, 'legacy copy must be swept');
+});
+
+test('pruneDeadRoots leaves an EDITED legacy copy alone', (t) => {
+  // Same rule as every other skill here: an exact copy of ours is ours to
+  // delete, an edited one is user data. The rename must not become a licence to
+  // delete whatever happens to sit under the old name.
+  const pkg = fakePkg(t, ['alpha']);
+  const root = tmpDir(t);
+  const legacy = path.join(root, 'xp-gate-reinstall');
+  fs.mkdirSync(legacy);
+  fs.writeFileSync(path.join(legacy, 'SKILL.md'), `${USER_EDIT}\n`);
+
+  pruneDeadRoots(pkg, [{ agent: 'A', dir: root }]);
+
+  assert.equal(fs.existsSync(legacy), true, 'an edited legacy copy is user data');
 });
 
 test('pruneDeadRoots does nothing when the package has no skills', (t) => {
