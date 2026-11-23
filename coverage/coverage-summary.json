@@ -1,16 +1,16 @@
 {
   "total": {
     "lines": {
-      "pct": 92.58
+      "pct": 92.59
     },
     "branches": {
-      "pct": 92.22
+      "pct": 92.24
     },
     "functions": {
       "pct": 89.05
     },
     "statements": {
-      "pct": 92.58
+      "pct": 92.59
     }
   },
   "coverage.mjs": {
@@ -127,16 +127,16 @@
   },
   "residue.mjs": {
     "lines": {
-      "pct": 97.19
+      "pct": 97.34
     },
     "branches": {
-      "pct": 95.56
+      "pct": 95.74
     },
     "functions": {
       "pct": 100
     },
     "statements": {
-      "pct": 97.19
+      "pct": 97.34
     }
   },
   "skills.mjs": {

@@ -170,8 +170,18 @@ function isOurSelfCopy(dir) {
   const skillFile = path.join(dir, 'SKILL.md');
   if (!isFile(skillFile)) return false;
   try {
-    const head = fs.readFileSync(skillFile, 'utf8').split('\n').slice(0, 20).join('\n');
-    return SELF_NAMES.some((name) => new RegExp(`^name:\\s*${name}\\s*$`, 'm').test(head));
+    // Compare the `name:` line literally rather than building a RegExp from a
+    // variable. The names are internal constants so there is no injection here,
+    // but a dynamic regexp is both slower and flagged by every SAST ruleset --
+    // the finding would have to be suppressed on every future run, and a
+    // suppressed finding is one nobody reads. Splitting the field is exact, which
+    // is what this predicate needs anyway: `name: reinstall-xp-gate-fork` is a
+    // different skill and must not be swept as ours.
+    const lines = fs.readFileSync(skillFile, 'utf8').split('\n').slice(0, 20);
+    const nameLine = lines.find((line) => line.trim().startsWith('name:'));
+    if (!nameLine) return false;
+    const declared = nameLine.slice(nameLine.indexOf(':') + 1).trim();
+    return SELF_NAMES.includes(declared);
   } catch {
     return false;
   }

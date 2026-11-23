@@ -202,6 +202,16 @@ test('pruneDeadRoots leaves an EDITED legacy copy alone', (t) => {
   assert.equal(fs.existsSync(legacy), true, 'an edited legacy copy is user data');
 });
 
+test('a copy is only ours when its name: line matches exactly', (t) => {
+  // The marker decides whether a directory may be deleted. A substring or
+  // prefix match would let `name: reinstall-xp-gate-fork` be swept as ours, so
+  // the comparison is exact on both names.
+  const { root } = legacySelfRoot(t, ['---', 'name: reinstall-xp-gate-fork', '---', ''].join('\n'));
+
+  assert.equal(sweepLegacySelfCopy(root), 0, 'a fork is not ours');
+  assert.equal(fs.existsSync(path.join(root, 'xp-gate-reinstall')), true);
+});
+
 test('pruneDeadRoots does nothing when the package has no skills', (t) => {
   const root = tmpDir(t);
   const pkg = tmpDir(t, 'xgr-empty-pkg-');
